@@ -26,6 +26,9 @@
 import type { AgentSpec } from "../agent-component.tsx";
 import type { Analysis } from "./analyze.ts";
 import { emitRuntimeFiles } from "./runtime-files.ts";
+import { evaluateComponent } from "./evaluate.ts";
+import { collectInfra } from "../tree.ts";
+import { createStore } from "../store.ts";
 
 export interface RootAgentSpec {
   /** The root agent's spec — the SAME `agentComponent(spec)` children use. The
@@ -69,6 +72,46 @@ export interface CloudflareEmit {
 const pascal = (s: string) => s.replace(/(?:^|[-_:])(\w)/g, (_, c) => c.toUpperCase());
 const scream = (s: string) => s.replace(/[-:]/g, "_").toUpperCase();
 
+/** Distinct subagent kinds an analysis reveals — the agentNames this agent
+ *  directly nests (static, dynamic, or both). Preserves first-seen order. */
+function subagentKindsFromAnalysis(analysis: Analysis): string[] {
+  const kinds: string[] = [];
+  for (const r of [...analysis.static, ...analysis.dynamic]) {
+    if (r.kind === "subagent") {
+      const k = String(r.config.kind);
+      if (!kinds.includes(k)) kinds.push(k);
+    }
+  }
+  return kinds;
+}
+
+/** Distinct subagent kinds a component's OWN render reveals — its direct nested
+ *  boundaries — by evaluating the impl at sampleProps + initialState. The
+ *  always-on boundaries surface every nested kind (dynamic fan-out only
+ *  multiplies instances of a kind already present). */
+function childKindsOfSpec(spec: AgentSpec): string[] {
+  const kinds: string[] = [];
+  const roots = evaluateComponent(spec.impl, {
+    ...(spec.sampleProps ?? {}),
+    store: createStore(spec.initialState),
+  } as never);
+  for (const root of roots) {
+    for (const rec of collectInfra(root)) {
+      if (rec.kind === "subagent") {
+        const k = String(rec.config.kind);
+        if (!kinds.includes(k)) kinds.push(k);
+      }
+    }
+  }
+  return kinds;
+}
+
+/** RHS of `childBinding = ...`: kind → env binding map, or `{}` when childless. */
+function childBindingLiteral(kinds: string[]): string {
+  if (kinds.length === 0) return "{}";
+  return `{\n${kinds.map((k) => `    ${JSON.stringify(k)}: "${scream(k)}",`).join("\n")}\n  } as const`;
+}
+
 export function emitCloudflare(
   root: RootAgentSpec,
   children: ChildAgentSpec[],
@@ -79,13 +122,24 @@ export function emitCloudflare(
   const spec = root.spec;
   const rootClass = `${pascal(spec.agentName)}Durable`;
   const rootBinding = scream(spec.agentName);
-  const kids = children.map((c) => ({
-    ...c,
-    className: `${pascal(c.spec.agentName)}Durable`,
-    binding: scream(c.spec.agentName),
-  }));
+  const kids = children.map((c) => {
+    const childKinds = childKindsOfSpec(c.spec);
+    return {
+      ...c,
+      className: `${pascal(c.spec.agentName)}Durable`,
+      binding: scream(c.spec.agentName),
+      // Each child class binds ITS OWN nested children (empty for a leaf). A
+      // mid-level agent that composes children gets a real map, not `{}`.
+      childBindingSource:
+        childKinds.length === 0
+          ? "{}; // extend when this agent composes children"
+          : `${childBindingLiteral(childKinds)};`,
+    };
+  });
 
-  const bindingMapEntries = kids.map((k) => `    ${JSON.stringify(k.spec.agentName)}: "${k.binding}",`).join("\n");
+  // The root binds only its DIRECT children (from its own analysis), not the
+  // whole flattened graph — a mid-level child owns the deeper bindings.
+  const rootChildBinding = childBindingLiteral(subagentKindsFromAnalysis(analysis));
   const envEntries = [rootBinding, ...kids.map((k) => k.binding)]
     .map((b) => `  ${b}: DurableObjectNamespace;`)
     .join("\n");
@@ -451,9 +505,7 @@ export class ${rootClass} extends FiberAgentBase<RootState> {
   // Initial state embedded from the spec — no initial-state-export import.
   initialState = ${JSON.stringify(spec.initialState)} as RootState;
   protected selfBinding = "${rootBinding}" as const;
-  protected childBinding = {
-${bindingMapEntries}
-  } as const;
+  protected childBinding = ${rootChildBinding};
   protected renderTree(state: RootState): unknown {
     // The root renders its OWN tree via the spec's impl (a bare component call
     // would be a subagent boundary — parent composition).
@@ -476,7 +528,7 @@ ${kids
 export class ${k.className} extends FiberAgentBase<ChildRuntimeState & Record<string, unknown>> {
   initialState = { ...${k.exportName}.spec.initialState, __props: null, __callbacks: {} };
   protected selfBinding = "${k.binding}" as const;
-  protected childBinding = {}; // extend when this agent composes children
+  protected childBinding = ${k.childBindingSource}
 
   async onStart() {}
   async onStateChanged(_state?: ChildRuntimeState & Record<string, unknown>, _source?: unknown) {}

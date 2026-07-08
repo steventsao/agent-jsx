@@ -17,7 +17,13 @@ const formatInfra = (child: ChildAgentSpec) => {
     ...(child.spec.sampleProps ?? {}),
     store: createStore(child.spec.initialState),
   } as never);
-  return roots.flatMap((root) => collectInfra(root)).map((r) => `${r.kind}:${r.name}`);
+  return roots
+    .flatMap((root) => collectInfra(root))
+    // Subagent boundaries ARE emitted for flue now (native `subagents:` on the
+    // profile); this warning is only about tools/schedules/sensors/tasks, which
+    // a task profile cannot carry.
+    .filter((r) => r.kind !== "subagent")
+    .map((r) => `${r.kind}:${r.name}`);
 };
 
 /**
