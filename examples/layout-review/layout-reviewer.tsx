@@ -1,24 +1,20 @@
 /**
- * Mid-level agent in the 3-level STATIC hierarchy (layout-analyst →
- * layout-reviewer → bbox-extractor).
+ * The DYNAMIC half of the layout pipeline, expressed as CONTINUATION NESTING.
  *
- * Its impl ALWAYS renders one <BboxExtractor> (the page header band, reviewed
- * on every page) — a STATIC nested boundary, present in every render. It ALSO
- * fans out one <BboxExtractor> per detected region — the DYNAMIC contrast,
- * gated on the `page` prop. Both nest the SAME reused leaf agent
- * (examples/pdf/bbox-extractor.tsx).
+ * The reviewer is the region DETECTOR: given a page it finds the layout regions
+ * and EMITS their bounding boxes — `emit(regions)` from a one-shot <task>. It
+ * spawns no children of its own. The call site (layout-analyst) owns the
+ * continuation that maps those emitted boxes to one <BboxExtractor> each, so the
+ * extractors are the ANALYST's direct children — not the reviewer's.
  *
- * The point this file makes: a child agent owns its OWN nested children. The
- * parent (layout-analyst) never sees these bbox extractors — it only knows it
- * nests a layout-reviewer. The compiler discovers this level transitively and
- * emits it as flue's native `subagents: [bboxExtractorProfile]` on the
- * layout-reviewer profile, plus a Durable Object class whose childBinding maps
- * bbox-extractor.
+ * `sampleOutput` is the representative emission the compiler expands the
+ * continuation at, so `bbox-extractor` is discovered (its class/binding/profile
+ * generated) even though the boundary is dynamic — output-gated, present only
+ * once the reviewer has emitted.
  */
 
 import { agentComponent } from "../../src/agent-component.tsx";
 import { useAgentState } from "../../src/state.ts";
-import { BboxExtractor } from "../pdf/bbox-extractor.tsx";
 import type { Bbox } from "../../targets/pdf/core/extract.ts";
 
 export interface ReviewRegion {
@@ -35,63 +31,45 @@ export interface ReviewPage {
 export interface LayoutReviewerProps extends Record<string, unknown> {
   /** The page under review — pushed down from the analyst as serializable props. */
   page: ReviewPage | null;
-  /** Line back to the parent: the review verdict once every region is read. */
-  onVerdict: (verdict: string) => void;
 }
 
 export interface LayoutReviewerState extends Record<string, unknown> {
-  segments: Record<string, string>;
+  /** Once the detection task has run and the regions have been emitted. */
+  detected: boolean;
 }
 
-/** The header band is reviewed on EVERY page regardless of detected regions —
- *  the always-on nested extractor (static hierarchy). */
-const HEADER_BBOX: Bbox = { x0: 0, y0: 0, x1: 1, y1: 0.15 };
-
-export const LayoutReviewer = agentComponent<LayoutReviewerProps, LayoutReviewerState>({
+export const LayoutReviewer = agentComponent<LayoutReviewerProps, LayoutReviewerState, ReviewRegion[]>({
   agentName: "layout-reviewer",
-  initialState: { segments: {} },
-  sampleProps: { page: null, onVerdict: () => {} },
-  impl: ({ page, onVerdict, store }) => {
-    const { segments } = useAgentState(store);
-    const regions = page?.regions ?? [];
-    const fold = (id: string, text: string) =>
-      store.set((s) => {
-        const segs = { ...s.segments, [id]: text };
-        // Report up once the header + every detected region is read.
-        if (page && ["header", ...regions.map((r) => r.id)].every((k) => k in segs)) {
-          onVerdict(`reviewed ${page.id}: ${Object.keys(segs).length} regions`);
-        }
-        return { ...s, segments: segs };
-      });
-
+  initialState: { detected: false },
+  sampleProps: { page: null },
+  // Representative emitted output — the compiler expands the parent's
+  // continuation here so bbox-extractor is discovered at compile time.
+  sampleOutput: [
+    { id: "r1", bbox: { x0: 0, y0: 0.2, x1: 1, y1: 0.5 } },
+    { id: "r2", bbox: { x0: 0, y0: 0.5, x1: 1, y1: 0.9 } },
+  ],
+  impl: ({ page, store, emit }) => {
+    const { detected } = useAgentState(store);
     return (
       <>
-        {/* STATIC nested boundary: the header extractor is ALWAYS present. */}
-        <BboxExtractor
-          name="bbox:main:header"
-          regionId="header"
-          bbox={HEADER_BBOX}
-          getPdf={() => page?.pdfB64 ?? ""}
-          onSegment={fold}
-        />
-
-        {/* DYNAMIC contrast: one nested extractor per detected region. Present
-            only once the analyst has pushed a page with regions. */}
-        {regions.map((region) => (
-          <BboxExtractor
-            key={region.id}
-            name={`bbox:main:${region.id}`}
-            regionId={region.id}
-            bbox={region.bbox}
-            getPdf={() => page?.pdfB64 ?? ""}
-            onSegment={fold}
+        {/* Detect once per page, then emit the boxes back to the parent. The
+            emitted output lands in the parent's reserved slot and drives its
+            continuation — the reviewer spawns nothing itself. */}
+        {page && !detected && (
+          <task
+            name={`detect:${page.id}`}
+            run={async () => page.regions}
+            onDone={(regions) => {
+              store.set({ detected: true });
+              emit?.(regions as ReviewRegion[]);
+            }}
           />
-        ))}
+        )}
 
         <prompt>
-          <sys p={10}>Review layout regions; delegate bbox extraction as needed.</sys>
+          <sys p={10}>Detect the layout regions of the page; emit their bounding boxes for extraction.</sys>
           <msg p={6}>
-            {regions.length} regions detected; {Object.keys(segments).length} read so far.
+            {detected ? "regions emitted" : page ? "detecting regions…" : "waiting for a page"}
           </msg>
         </prompt>
       </>

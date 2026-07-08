@@ -15,16 +15,17 @@
  *   bun examples/layout-review/demo.tsx
  */
 
+import { mountAgent } from "../../src/agent.ts";
 import { SimHost } from "../../src/sim-host.ts";
 import { createStore } from "../../src/state.ts";
 import { evaluateTree } from "../../src/compile/evaluate.ts";
 import { collectInfra } from "../../src/tree.ts";
 import { discoverAgents, type AgentModule, type AgentNode } from "../../src/compile/graph.ts";
-import { LayoutAnalyst, initialLayoutAnalystState } from "./layout-analyst.tsx";
+import { LayoutAnalyst, initialLayoutAnalystState, type LayoutAnalystState } from "./layout-analyst.tsx";
 import { LayoutReviewer, type ReviewPage } from "./layout-reviewer.tsx";
 import { BboxExtractor } from "../pdf/bbox-extractor.tsx";
 
-const world = { statusAt: () => 200 };
+
 
 // A page with two detected regions — enough to contrast the always-on header
 // extractor (static) against the per-region fan-out (dynamic).
@@ -41,15 +42,15 @@ const rootModule: AgentModule = {
   spec: LayoutAnalyst.spec,
   exportName: "LayoutAnalyst",
   importPath: "./layout-analyst.tsx",
-  samples: [{ state: initialLayoutAnalystState }, { state: { page: loadedPage, verdict: null } }],
+  samples: [{ state: initialLayoutAnalystState }, { state: { page: loadedPage, segments: {}, verdict: null } }],
 };
 const reviewerModule: AgentModule = {
   spec: LayoutReviewer.spec,
   exportName: "LayoutReviewer",
   importPath: "./layout-reviewer.tsx",
   samples: [
-    { props: { page: null }, state: { segments: {} } },
-    { props: { page: loadedPage }, state: { segments: {} } },
+    { props: { page: null }, state: { detected: false } },
+    { props: { page: loadedPage }, state: { detected: false } },
   ],
 };
 const bboxModule: AgentModule = {
@@ -99,7 +100,7 @@ function spawn(
   }
 }
 
-console.log("3-LEVEL STATIC HIERARCHY — layout-analyst → layout-reviewer → bbox-extractor\n");
+console.log("3-LEVEL HIERARCHY UNDER CONTINUATION OWNERSHIP\n");
 
 console.log("1. Transitive discovery (each level's DIRECT children):\n");
 for (const node of graph) {
@@ -107,9 +108,24 @@ for (const node of graph) {
   console.log(`   ${node.isRoot ? "root " : "     "}${node.spec.agentName.padEnd(16)} → ${kids}`);
 }
 
-console.log("\n2. Sim host spawn op log (nesting IS the spawn topology):\n");
-console.log(`   + spawn  ${"layout-analyst".padEnd(16)} ${"(root)".padEnd(22)} [entry]`);
-spawn(graph[0]!, {}, { page: loadedPage, verdict: null }, 1);
+console.log("\n2. LIVE continuation (sim): the reviewer emits boxes → the analyst's render-prop fans out\n");
+const world = {
+  statusAt: () => 200,
+  // the reviewer's completion carries its STRUCTURED output (the detected
+  // regions); extractor completions stay plain strings.
+  subagentResult: (live: { name: string; config: Record<string, unknown> }) =>
+    live.name === "review:main" ? loadedPage.regions : `[${live.name}] extracted`,
+};
+const host = new SimHost(world);
+const store = createStore<LayoutAnalystState & Record<string, unknown>>({ ...initialLayoutAnalystState });
+const AnalystImpl = LayoutAnalyst.spec.impl;
+const handle = mountAgent(<AnalystImpl store={store} emit={() => {}} />, host);
+
+console.log("   → page arrives (props push):");
+handle.dispatch(() => store.set((s0) => ({ ...s0, page: loadedPage })));
+console.log("   → reviewer completes and EMITS its boxes; the continuation mounts the extractors:");
+handle.tick();
+handle.tick();
 
 console.log("\n3. Per-level static/dynamic split (the compile-time capability surface):\n");
 for (const node of graph) {
@@ -132,6 +148,6 @@ for (const node of graph) {
 }
 
 console.log(
-  "\nStatic nesting stays native `subagents:` at every level; only the prop-gated\n" +
-    "per-region fan-out becomes spawnPlan residue. No boundary is flattened.\n"
+  "\nStatic nesting stays native `subagents:`; the continuation (render-prop) residue\n" +
+    "reads the reserved __outputs slot — grandchildren mount only after the child emits.\n"
 );

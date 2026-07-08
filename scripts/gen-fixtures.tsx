@@ -64,15 +64,15 @@ export function buildLayoutFixtures(): Record<string, string> {
     spec: LayoutAnalyst.spec,
     exportName: "LayoutAnalyst",
     importPath: "../agents/layout-analyst.tsx",
-    samples: [{ state: initialLayoutAnalystState }, { state: { page: loadedPage, verdict: null } }],
+    samples: [{ state: initialLayoutAnalystState }, { state: { page: loadedPage, segments: {}, verdict: null } }],
   };
   const reviewerModule: AgentModule = {
     spec: LayoutReviewer.spec,
     exportName: "LayoutReviewer",
     importPath: "../agents/layout-reviewer.tsx",
     samples: [
-      { props: { page: null }, state: { segments: {} } },
-      { props: { page: loadedPage }, state: { segments: {} } },
+      { props: { page: null }, state: { detected: false } },
+      { props: { page: loadedPage }, state: { detected: false } },
     ],
   };
   const bboxModule: AgentModule = {

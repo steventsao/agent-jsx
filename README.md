@@ -120,32 +120,29 @@ export default defineAgent(() => ({
 }));
 ```
 
-agent-jsx writes the same hierarchy as component nesting. The root's impl always nests `<LayoutReviewer>`; the reviewer's own impl always nests one `<BboxExtractor>` ([examples/layout-review/](examples/layout-review/)):
+agent-jsx writes the same static edge as component nesting — the analyst's impl always renders the reviewer ([examples/layout-review/](examples/layout-review/)):
 
 ```tsx
 // layout-analyst.tsx — the root always nests the reviewer
-<LayoutReviewer name="review:main" page={page} onVerdict={(v) => store.set({ verdict: v })} />
-
-// layout-reviewer.tsx — the reviewer always nests one extractor (reused from examples/pdf)
-<BboxExtractor name="bbox:main:header" regionId="header" bbox={HEADER_BBOX}
-               getPdf={() => page?.pdfB64 ?? ""} onSegment={fold} />
+<LayoutReviewer name="review:main" page={page}>
+  {/* the render-prop continuation — next section */}
+</LayoutReviewer>
 ```
 
-The compiler discovers the levels transitively and emits flue's native shape at every level: the root `defineAgent` carries `subagents: [layoutReviewerProfile]`, the mid-level `defineAgentProfile` carries its own `subagents: [bboxExtractorProfile]`, and each import crosses to the child's own module ([fixtures/layout-analyst.flue.ts](fixtures/layout-analyst.flue.ts), [fixtures/layout-reviewer.flue.ts](fixtures/layout-reviewer.flue.ts)):
+The compiler discovers every level transitively and emits flue's native roster with real cross-module imports ([fixtures/layout-analyst.flue.ts](fixtures/layout-analyst.flue.ts)):
 
 ```ts
-// layout-analyst.flue.ts — root
+// layout-analyst.flue.ts — root: every delegation target declared, static ones
+// excluded from the dynamic plan
 import { layout_reviewerProfile } from "./layout-reviewer.flue.ts";
-export default defineAgent(() => ({ /* ... */ subagents: [layout_reviewerProfile] }));
-
-// layout-reviewer.flue.ts — mid: a profile carrying its OWN subagents (flue's sketch)
 import { bbox_extractorProfile } from "./bbox-extractor.flue.ts";
-export const layout_reviewerProfile = defineAgentProfile({
-  /* ... */ subagents: [bbox_extractorProfile],
-});
+export default defineAgent(() => ({
+  /* ... */ subagents: [layout_reviewerProfile, bbox_extractorProfile],
+}));
+const STATIC_SUBAGENTS = new Set(["review:main"]);
 ```
 
-Nesting is spawn topology: `bun ex:layout-review` drives the sim host and prints those same three levels as a spawn op log. Only the dynamic residue — a `.map` that fans out per state or prop — leaves this static shape, and it lands in `spawnPlan`. The static hierarchy is never flattened into a plan.
+A profile can itself carry `subagents:` — flue's mid-level sketch — whenever a child nests statically; [tests/nesting.test.tsx](tests/nesting.test.tsx) keeps that emission covered. `bun ex:layout-review` drives the sim host and prints the topology live. Only the dynamic residue — a state `.map` or an output continuation — lands in `spawnPlan`; the static hierarchy is never flattened into a plan.
 
 | Concern | Native flue binding | agent-jsx JSX to flue |
 |---|---|---|
@@ -158,6 +155,35 @@ Nesting is spawn topology: `bun ex:layout-review` drives the sim host and prints
 | Dynamic presence | The workflow author decides when to call `session.task` | State or props decide whether `<Child />` renders; the compiler splits static (native `subagents:`) from dynamic (`spawnPlan`) |
 
 The flue target does not replace flue's subagent mechanism. It compiles a nested JSX ownership tree down to flue's existing pieces: named profiles for reusable behavior, native `subagents:` arrays for the static hierarchy, stable ids for per-instance children, and a `defineWorkflow` loop that calls `session.task(..., { agent })` when the render reveals new children.
+
+### Continuation nesting — fan out from a child's output
+
+A boundary takes function children. The child agent `emit`s its result; the output lands durably in the parent's reserved `__outputs` slot; the parent re-renders and the continuation — a pure `(output) => tree` — fans out grandchildren the PARENT owns ([examples/layout-review/layout-analyst.tsx](examples/layout-review/layout-analyst.tsx)):
+
+```tsx
+<LayoutReviewer name="review:main" page={page}>
+  {(boxes) =>
+    boxes.map((bbox) => (
+      <BboxExtractor
+        key={bbox.id}
+        name={`bbox:${bbox.id}`}
+        regionId={bbox.id}
+        bbox={bbox.bbox}
+        getPdf={() => page?.pdfB64 ?? ""}
+        onSegment={fold}
+      />
+    ))
+  }
+</LayoutReviewer>
+```
+
+```tsx
+// layout-reviewer.tsx — the child side: emit when the result is ready
+<task name={`detect:${page.id}`} run={async () => page.regions}
+      onDone={(regions) => { store.set({ detected: true }); emit?.(regions); }} />
+```
+
+No output yet → the continuation contributes nothing. Output changes → the grandchildren converge by `name`. Closures never cross the boundary — the continuation re-renders from persisted state, so `bun ex:layout-review` shows the reviewer mount at t=0 and `bbox:r1`/`bbox:r2` mount only after the emit. On the Cloudflare target the child's `emit` compiles to a reserved `__emit` RPC that writes `__outputs` via the durable store; on flue, `spawnPlan(state)` reads the same slot, so the emitted residue appears exactly one workflow round after the fold. `sampleOutput` on the child's spec is what discovery expands the continuation at, so continuation-only kinds still get their classes, bindings, and profiles at compile time.
 
 ### Dynamic fan-out is a `.map`
 

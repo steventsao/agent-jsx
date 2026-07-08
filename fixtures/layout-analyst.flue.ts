@@ -10,9 +10,10 @@
 import { defineAgent } from "@flue/runtime";
 import { evaluateTree } from "./runtime/compile/evaluate.ts";
 import { collectInfra } from "./runtime/tree.ts";
-import { createStore } from "./runtime/store.ts";
+import { createStore, withOutputs } from "./runtime/store.ts";
 import { LayoutAnalyst } from "../agents/layout-analyst.tsx";
 import { layout_reviewerProfile } from "./layout-reviewer.flue.ts";
+import { bbox_extractorProfile } from "./bbox-extractor.flue.ts";
 
 // State + props derived structurally from the component spec (no state-type
 // string, no per-emit propsJson): the spec is the single analyzed source.
@@ -24,9 +25,9 @@ const PROPS = {} as const;
 // module/route, not the config object.
 export default defineAgent(() => ({
   model: "openrouter/google/gemini-3.1-flash-lite-preview",
-  instructions: "[system] Analyze the document layout. Delegate review to the layout reviewer.\nwaiting for a page",
+  instructions: "[system] Analyze the document layout. Delegate detection to the reviewer; extract each region it emits.\nwaiting for a page",
   // Declared subagent profiles are flue's binding table for session.task(..., { agent }).
-  subagents: [layout_reviewerProfile],
+  subagents: [layout_reviewerProfile, bbox_extractorProfile],
 
   // No static tools: the component's <tool> is state-gated (e.g. page-oncall
   // only during an incident). Surface it per-turn via the harness rather than
@@ -36,7 +37,7 @@ export default defineAgent(() => ({
 }));
 
 /**
- * Dynamic residue: flue's runtime has no state→render
+ * Dynamic residue (subagent:bbox:r1, subagent:bbox:r2): flue's runtime has no state→render
  * loop, so state-gated children compile to a spawn plan the orchestrating
  * workflow calls after each state change. Stable ids come from `name` —
  * "the #1 production bug" per flue's render-prop plan, solved by contract.
@@ -48,15 +49,20 @@ export default defineAgent(() => ({
 const STATIC_SUBAGENTS = new Set(["review:main"]);
 export function spawnPlan(state: State) {
   const store = createStore<State>(state);
+  // Continuation grandchildren expand from the reserved __outputs slot: once a
+  // child's emit has landed in state.__outputs, this plan fans out the boundary's
+  // render-prop children (the workflow round that folded the emit calls spawnPlan
+  // again). `emits` marks a boundary whose delegate resolves a structured output.
+  const outputs = (state as { __outputs?: Record<string, unknown> }).__outputs ?? {};
   // .spec.impl renders the agent's OWN tree; a bare component call would be a
   // subagent boundary (parent composition), collapsing the whole plan to one.
-  const desired = evaluateTree(LayoutAnalyst.spec.impl({ ...PROPS, store })).flatMap((root) =>
-    collectInfra(root)
-  );
+  const desired = withOutputs({ outputs, setOutput: () => {} }, () =>
+    evaluateTree(LayoutAnalyst.spec.impl({ ...PROPS, store, emit: () => {} }))
+  ).flatMap((root) => collectInfra(root));
   return desired
     .filter((r) => r.kind === "subagent" && !STATIC_SUBAGENTS.has(r.name))
     .map((r) => {
       const { kind, ...input } = r.config;
-      return { stableId: r.name, agent: String(kind), input };
+      return { stableId: r.name, agent: String(kind), input, emits: "__emit" in r.handlers };
     });
 }

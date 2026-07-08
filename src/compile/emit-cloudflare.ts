@@ -28,7 +28,7 @@ import type { Analysis } from "./analyze.ts";
 import { emitRuntimeFiles } from "./runtime-files.ts";
 import { evaluateComponent } from "./evaluate.ts";
 import { collectInfra } from "../tree.ts";
-import { createStore } from "../store.ts";
+import { createStore, withOutputs } from "../store.ts";
 
 export interface RootAgentSpec {
   /** The root agent's spec — the SAME `agentComponent(spec)` children use. The
@@ -91,10 +91,15 @@ function subagentKindsFromAnalysis(analysis: Analysis): string[] {
  *  multiplies instances of a kind already present). */
 function childKindsOfSpec(spec: AgentSpec): string[] {
   const kinds: string[] = [];
-  const roots = evaluateComponent(spec.impl, {
-    ...(spec.sampleProps ?? {}),
-    store: createStore(spec.initialState),
-  } as never);
+  // Sample-output expansion ON: a child that spawns its OWN grandchildren via a
+  // render-prop continuation must bind their kinds too (its childBinding).
+  const roots = withOutputs({ outputs: {}, setOutput: () => {}, expandSamples: true }, () =>
+    evaluateComponent(spec.impl, {
+      ...(spec.sampleProps ?? {}),
+      store: createStore(spec.initialState),
+      emit: () => {},
+    } as never)
+  );
   for (const root of roots) {
     for (const rec of collectInfra(root)) {
       if (rec.kind === "subagent") {
@@ -161,6 +166,7 @@ import { Agent, getAgentByName } from "agents";
 import { evaluateTree } from "${rt}/compile/evaluate.ts";
 import { collectInfra, collectPrompt } from "${rt}/tree.ts";
 import { renderPromptOrFallback } from "${rt}/prompt.ts";
+import { withOutputs } from "${rt}/store.ts";
 import type { AgentStore } from "${rt}/store.ts";
 import type { InfraRecord } from "${rt}/types.ts";
 import { ${root.componentName} } from "${root.componentImport}";
@@ -292,10 +298,33 @@ abstract class FiberAgentBase<S extends Record<string, unknown>> extends Agent<G
     return live ?? persisted;
   }
 
+  /** Render the tree with the continuation-outputs context bound to this DO's
+   *  reserved __outputs slot. A child's emit — the reserved \`__emit\` callback
+   *  event — lands here via #applyOutput, and the boundary's render-prop
+   *  continuation expands its grandchildren (this agent's OWN direct children)
+   *  on the next render. */
+  #renderRoots() {
+    const outputs =
+      (this.state as { __outputs?: Record<string, unknown> }).__outputs ?? {};
+    return withOutputs({ outputs, setOutput: (name, output) => this.#applyOutput(name, output) }, () =>
+      evaluateTree(this.renderTree(this.state))
+    );
+  }
+
+  /** Reserved output slot write — a child's \`__emit\` merges here (boundStore
+   *  semantics), NOT a full setState replace, so runtime bookkeeping survives.
+   *  A no-change write is skipped so the onStateChanged → reconcile loop settles. */
+  #applyOutput(name: string, output: unknown) {
+    const prev = (this.state as { __outputs?: Record<string, unknown> }).__outputs ?? {};
+    if (JSON.stringify(prev[name]) === JSON.stringify(output)) return;
+    this.setState({ ...this.state, __outputs: { ...prev, [name]: output } } as S);
+    this.#needsReconcile = true;
+  }
+
   /** Render once, capturing the freshest handler closures. Returns desired infra. */
   #renderHandlers(): InfraRecord[] {
     const desired: InfraRecord[] = [];
-    for (const r of evaluateTree(this.renderTree(this.state))) collectInfra(r, desired);
+    for (const r of this.#renderRoots()) collectInfra(r, desired);
     this.#handlers.clear();
     this.#configs.clear();
     for (const rec of desired) {
@@ -450,8 +479,12 @@ abstract class FiberAgentBase<S extends Record<string, unknown>> extends Agent<G
       // child → parent callback: route to the parent's freshest closure and
       // RETURN its awaited result so a method prop round-trips (request/response).
       // A void event (onResult) resolves to undefined; a method prop (lookupRunbook)
-      // resolves to the value the parent's live closure computed. Args + return
-      // must be structured-cloneable — DO RPC clones them (COMPAT-REPORT #21).
+      // resolves to the value the parent's live closure computed. The RESERVED
+      // \`__emit\` event is a continuation output: its freshest closure is the
+      // boundary wrapper's setOutput, so it writes this.state.__outputs (via
+      // #applyOutput) and the marked reconcile below expands the continuation's
+      // grandchildren. Args + return must be structured-cloneable — DO RPC
+      // clones them (COMPAT-REPORT #21).
       const { child, event } = payload.callback;
       const result = await this.#handlers.get(\`subagent:\${child}\`)?.[event]?.(...(payload.args ?? []));
       if (this.#needsReconcile) await this.#requestReconcile();
@@ -484,7 +517,7 @@ abstract class FiberAgentBase<S extends Record<string, unknown>> extends Agent<G
    *  wins (priompt priorities/budget); otherwise the spec's imperative
    *  getPrompt seam; otherwise empty. (agent-jsx part B) */
   promptFor(budgetTokens: number): string {
-    const blocks = collectPrompt(evaluateTree(this.renderTree(this.state)));
+    const blocks = collectPrompt(this.#renderRoots());
     return renderPromptOrFallback(blocks, budgetTokens, () => this.imperativePrompt(this.state));
   }
 
@@ -508,8 +541,10 @@ export class ${rootClass} extends FiberAgentBase<RootState> {
   protected childBinding = ${rootChildBinding};
   protected renderTree(state: RootState): unknown {
     // The root renders its OWN tree via the spec's impl (a bare component call
-    // would be a subagent boundary — parent composition).
-    return ${root.componentName}.spec.impl({ ...ROOT_PROPS, store: this.boundStore<RootState>() });
+    // would be a subagent boundary — parent composition). A root emits to no
+    // one, so \`emit\` is a no-op; its OWN boundaries' continuations expand from
+    // this.state.__outputs (bound by #renderRoots).
+    return ${root.componentName}.spec.impl({ ...ROOT_PROPS, store: this.boundStore<RootState>(), emit: () => {} });
   }
   protected imperativePrompt(state: RootState): string {
     return ${root.componentName}.spec.getPrompt?.(state) ?? "";
@@ -574,7 +609,10 @@ export class ${k.className} extends FiberAgentBase<ChildRuntimeState & Record<st
     // a capability WITH a return value: the proxy RETURNS the parent
     // dispatcher's result, so awaiting props.lookupRunbook(x) in the child
     // resolves to whatever the parent's freshest closure computed. Fire-and-forget
-    // events (onResult) just ignore the resolved undefined.
+    // events (onResult) just ignore the resolved undefined. The reserved
+    // \`__emit\` callback is the child's continuation output channel — routed to
+    // \`emit\` below, it lands in the parent's __outputs and drives the parent's
+    // render-prop continuation.
     const proxied: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
     for (const [event, ref] of Object.entries(state.__callbacks)) {
       proxied[event] = async (...args) => {
@@ -587,7 +625,7 @@ export class ${k.className} extends FiberAgentBase<ChildRuntimeState & Record<st
         return await parent.onAgentEvent({ callback: { child: ref.child, event: ref.event }, args });
       };
     }
-    return ${k.exportName}.spec.impl({ ...state.__props, ...proxied, store: this.boundStore() } as never);
+    return ${k.exportName}.spec.impl({ ...state.__props, ...proxied, emit: proxied.__emit ?? (() => {}), store: this.boundStore() } as never);
   }
 
   protected imperativePrompt(state: ChildRuntimeState & Record<string, unknown>): string {

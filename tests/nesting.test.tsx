@@ -1,13 +1,17 @@
 /**
- * Multi-level STATIC nesting — the layout-review example (layout-analyst →
- * layout-reviewer → bbox-extractor). These are RED until the compiler learns
- * to (1) discover child agents transitively, (2) emit a Durable Object class
- * per level with its OWN childBinding, and (3) emit flue's native `subagents:`
- * arrays at every level while keeping ONLY the dynamic residue in spawnPlan.
+ * Multi-level nesting — the layout-review example under CONTINUATION ownership:
+ * the analyst statically nests the reviewer AND owns the extractors its
+ * continuation maps from the reviewer's emitted boxes (parent-owned
+ * grandchildren). The reviewer nests nothing. Discovery must surface
+ * continuation kinds via sampleOutput; emitters must keep static children in
+ * native rosters (flue `subagents:`) and continuation residue in spawnPlan;
+ * profile-level nesting (a profile carrying its own `subagents:`) is covered
+ * by a synthetic pair at the bottom.
  */
 
 import { describe, expect, it } from "bun:test";
 import { discoverAgents, type AgentModule } from "../src/compile/graph.ts";
+import { agentComponent } from "../src/agent-component.tsx";
 import { emitCloudflare, type ChildAgentSpec } from "../src/compile/emit-cloudflare.ts";
 import { emitFlue, emitFlueChild, flueProfileExportName } from "../src/compile/emit-flue.ts";
 import { LayoutAnalyst, initialLayoutAnalystState } from "../examples/layout-review/layout-analyst.tsx";
@@ -29,7 +33,7 @@ const rootModule: AgentModule = {
   importPath: "../agents/layout-analyst.tsx",
   samples: [
     { state: initialLayoutAnalystState },
-    { state: { page: loadedPage, verdict: null } },
+    { state: { page: loadedPage, segments: {}, verdict: null } },
   ],
 };
 
@@ -38,8 +42,8 @@ const reviewerModule: AgentModule = {
   exportName: "LayoutReviewer",
   importPath: "../agents/layout-reviewer.tsx",
   samples: [
-    { props: { page: null }, state: { segments: {} } },
-    { props: { page: loadedPage }, state: { segments: {} } },
+    { props: { page: null }, state: { detected: false } },
+    { props: { page: loadedPage }, state: { detected: false } },
   ],
 };
 
@@ -65,8 +69,8 @@ describe("recursive boundary discovery", () => {
 
   it("records each level's direct children (its own boundaries only)", () => {
     const graph = discoverAgents(rootModule, [reviewerModule, bboxModule]);
-    expect(graph[0]!.directChildren).toEqual(["layout-reviewer"]);
-    expect(graph[1]!.directChildren).toEqual(["bbox-extractor"]);
+    expect(graph[0]!.directChildren).toEqual(["layout-reviewer", "bbox-extractor"]);
+    expect(graph[1]!.directChildren).toEqual([]);
     expect(graph[2]!.directChildren).toEqual([]);
   });
 
@@ -74,12 +78,14 @@ describe("recursive boundary discovery", () => {
     const graph = discoverAgents(rootModule, [reviewerModule, bboxModule]);
     // Root ALWAYS renders the reviewer → static.
     expect(ids(graph[0]!.analysis.static)).toContain("subagent:review:main");
-    // Reviewer ALWAYS renders the header extractor → static; the per-region
-    // fan-out is dynamic.
-    expect(ids(graph[1]!.analysis.static)).toContain("subagent:bbox:main:header");
-    expect(ids(graph[1]!.analysis.dynamic)).toContain("subagent:bbox:main:r1");
-    expect(ids(graph[1]!.analysis.dynamic)).toContain("subagent:bbox:main:r2");
-    expect(ids(graph[1]!.analysis.static)).not.toContain("subagent:bbox:main:r1");
+    // Continuation grandchildren expand at the reviewer's sampleOutput and are
+    // output-gated → ROOT dynamic, never static.
+    expect(ids(graph[0]!.analysis.dynamic)).toContain("subagent:bbox:r1");
+    expect(ids(graph[0]!.analysis.dynamic)).toContain("subagent:bbox:r2");
+    expect(ids(graph[0]!.analysis.static)).not.toContain("subagent:bbox:r1");
+    // The reviewer nests nothing — its only records are its own task/prompt.
+    expect(ids(graph[1]!.analysis.static).filter((k) => k.startsWith("subagent:"))).toEqual([]);
+    expect(ids(graph[1]!.analysis.dynamic).filter((k) => k.startsWith("subagent:"))).toEqual([]);
   });
 
   it("de-dupes a repeated registration to one node", () => {
@@ -108,26 +114,25 @@ describe("emitCloudflare — a class per level with its OWN childBinding", () =>
     expect(out).toContain("class BboxExtractorDurable");
   });
 
-  it("the mid-level class binds ITS OWN child (bbox-extractor), not {}", () => {
-    const out = cf().agents;
-    const midBlock = out.slice(
-      out.indexOf("class LayoutReviewerDurable"),
-      out.indexOf("class BboxExtractorDurable")
-    );
-    expect(midBlock).toContain(`"bbox-extractor": "BBOX_EXTRACTOR",`);
-    // the leaf composes nothing → empty binding
-    const leafBlock = out.slice(out.indexOf("class BboxExtractorDurable"));
-    expect(leafBlock).toContain("protected childBinding = {};");
-  });
-
-  it("the root binds ONLY its direct child, not the whole flattened graph", () => {
+  it("the root binds BOTH its static child and its continuation grandchild", () => {
     const out = cf().agents;
     const rootBlock = out.slice(
       out.indexOf("class LayoutAnalystDurable"),
       out.indexOf("class LayoutReviewerDurable")
     );
     expect(rootBlock).toContain(`"layout-reviewer": "LAYOUT_REVIEWER",`);
-    expect(rootBlock).not.toContain("bbox-extractor");
+    expect(rootBlock).toContain(`"bbox-extractor": "BBOX_EXTRACTOR",`);
+  });
+
+  it("the reviewer and the leaf bind nothing (no flattening through the mid level)", () => {
+    const out = cf().agents;
+    const midBlock = out.slice(
+      out.indexOf("class LayoutReviewerDurable"),
+      out.indexOf("class BboxExtractorDurable")
+    );
+    expect(midBlock).toContain("protected childBinding = {};");
+    const leafBlock = out.slice(out.indexOf("class BboxExtractorDurable"));
+    expect(leafBlock).toContain("protected childBinding = {};");
   });
 
   it("GeneratedEnv and wrangler cover every class", () => {
@@ -161,29 +166,64 @@ describe("emitFlue — native subagents at every level, dynamic-only spawnPlan",
       runtimeImport: "./runtime",
     });
     expect(out).toContain(`import { layout_reviewerProfile } from "./layout-reviewer.flue.ts";`);
-    expect(out).toContain("subagents: [layout_reviewerProfile]");
-    // review:main is static → excluded from the dynamic residue plan.
+    expect(out).toContain(`import { bbox_extractorProfile } from "./bbox-extractor.flue.ts";`);
+    // The roster carries BOTH: the static child and the continuation kind —
+    // flue needs every delegation target declared for session.task({agent}).
+    expect(out).toContain("subagents: [layout_reviewerProfile, bbox_extractorProfile]");
+    // review:main is static → excluded from the dynamic residue plan; the
+    // continuation residue reads the reserved __outputs slot.
     expect(out).toContain(`const STATIC_SUBAGENTS = new Set(["review:main"]);`);
     expect(out).toContain("!STATIC_SUBAGENTS.has(r.name)");
+    expect(out).toContain("state as { __outputs?: Record<string, unknown> }");
   });
 
-  it("mid-level defineAgentProfile nests its own profile (exactly flue's sketch)", () => {
+  it("the reviewer emits as a LEAF profile (continuation moved its children to the root)", () => {
     const out = emitFlueChild(
       { spec: reviewerNode!.spec, exportName: "LayoutReviewer", importPath: "../agents/layout-reviewer.tsx" },
       400,
-      {
-        runtimeImport: "./runtime",
-        childProfiles: reviewerNode!.directChildren.map(profileImport),
-        analysis: reviewerNode!.analysis,
-      }
+      { runtimeImport: "./runtime", childProfiles: reviewerNode!.directChildren.map(profileImport) }
     );
     expect(out).toContain("defineAgentProfile");
-    expect(out).toContain(`import { bbox_extractorProfile } from "./bbox-extractor.flue.ts";`);
-    expect(out).toContain("subagents: [bbox_extractorProfile]");
-    // the dynamic per-region fan-out is the mid-level's spawn residue; the
-    // always-on header is static and excluded.
-    expect(out).toContain("export function spawnPlan");
-    expect(out).toContain(`const STATIC_SUBAGENTS = new Set(["bbox:main:header"]);`);
+    expect(out).not.toContain("subagents:");
+  });
+
+  it("a profile can nest its own profile (exactly flue's sketch) — synthetic mid-level", () => {
+    const Leaf = agentComponent({
+      agentName: "synthetic-leaf",
+      initialState: {},
+      impl: () => (
+        <prompt>
+          <sys p={10}>Extract one bbox from the PDF page.</sys>
+        </prompt>
+      ),
+    });
+    const Mid = agentComponent({
+      agentName: "synthetic-reviewer",
+      initialState: {},
+      impl: () => (
+        <>
+          <Leaf name="leaf:main" />
+          <prompt>
+            <sys p={10}>Review layout regions; delegate bbox extraction as needed.</sys>
+          </prompt>
+        </>
+      ),
+    });
+    const midNode = discoverAgents(
+      { spec: Mid.spec, exportName: "Mid", importPath: "./mid.tsx" },
+      [{ spec: Leaf.spec, exportName: "Leaf", importPath: "./leaf.tsx" }]
+    )[0]!;
+    const out = emitFlueChild(
+      { spec: Mid.spec, exportName: "Mid", importPath: "./mid.tsx" },
+      400,
+      {
+        runtimeImport: "./runtime",
+        childProfiles: midNode.directChildren.map(profileImport),
+        analysis: midNode.analysis,
+      }
+    );
+    expect(out).toContain(`import { synthetic_leafProfile } from "./synthetic-leaf.flue.ts";`);
+    expect(out).toContain("subagents: [synthetic_leafProfile]");
   });
 
   it("leaf profile stays a plain task profile (no subagents, no spawnPlan)", () => {

@@ -17,7 +17,7 @@
  */
 
 import type { ReactNode } from "react";
-import { createStore } from "../store.ts";
+import { createStore, withOutputs } from "../store.ts";
 import type { AgentSpec } from "../agent-component.tsx";
 import { analyze, type Analysis } from "./analyze.ts";
 import { evaluateComponent } from "./evaluate.ts";
@@ -56,7 +56,9 @@ export interface AgentNode extends AgentModule {
 
 /** An element `{ type: impl, props }`, NOT a call to impl: `analyze` walks it
  *  via `evaluateTree`, which invokes the impl inside `withStaticEval` so
- *  `useAgentState` degenerates to a store read instead of a live React hook. */
+ *  `useAgentState` degenerates to a store read instead of a live React hook.
+ *  `emit` is a no-op here — it is only ever called from a <task> onDone at
+ *  runtime, never during a render/static-eval. */
 function renderSample(spec: AgentSpec, sample: AgentSample): ReactNode {
   return {
     type: spec.impl,
@@ -64,6 +66,7 @@ function renderSample(spec: AgentSpec, sample: AgentSample): ReactNode {
       ...(spec.sampleProps ?? {}),
       ...(sample.props ?? {}),
       store: createStore(sample.state),
+      emit: () => {},
     },
   } as unknown as ReactNode;
 }
@@ -75,23 +78,30 @@ export function analyzeAgent(mod: AgentModule): Analysis {
 }
 
 /** Distinct subagent kinds across a module's static ∪ dynamic capability —
- *  the agentNames of the children it directly nests, in first-seen order. */
+ *  the agentNames of the children it directly nests, in first-seen order.
+ *  Sample-output expansion is ON, so a child KIND produced only via a
+ *  render-prop continuation (e.g. `bbox-extractor` mapped from a reviewer's
+ *  emitted boxes) is still discovered — its class/binding/profile must be
+ *  generated even though the boundary is dynamic. */
 export function directChildKinds(mod: AgentModule): string[] {
   const kinds: string[] = [];
   const samples = mod.samples ?? [{ state: mod.spec.initialState as Record<string, unknown> }];
   for (const sample of samples) {
-    for (const root of evaluateComponent(mod.spec.impl, {
-      ...(mod.spec.sampleProps ?? {}),
-      ...(sample.props ?? {}),
-      store: createStore(sample.state),
-    } as never)) {
-      for (const rec of collectInfra(root)) {
-        if (rec.kind === "subagent") {
-          const kind = String(rec.config.kind);
-          if (!kinds.includes(kind)) kinds.push(kind);
+    withOutputs({ outputs: {}, setOutput: () => {}, expandSamples: true }, () => {
+      for (const root of evaluateComponent(mod.spec.impl, {
+        ...(mod.spec.sampleProps ?? {}),
+        ...(sample.props ?? {}),
+        store: createStore(sample.state),
+        emit: () => {},
+      } as never)) {
+        for (const rec of collectInfra(root)) {
+          if (rec.kind === "subagent") {
+            const kind = String(rec.config.kind);
+            if (!kinds.includes(kind)) kinds.push(kind);
+          }
         }
       }
-    }
+    });
   }
   return kinds;
 }

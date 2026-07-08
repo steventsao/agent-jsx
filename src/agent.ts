@@ -16,6 +16,18 @@ import { collectPrompt, createFiber, type Fiber } from "./reconciler.ts";
 import { renderPrompt, type RenderedPrompt } from "./prompt.ts";
 import type { AgentHost, HostOp } from "./types.ts";
 import { formatOps, SimHost } from "./sim-host.ts";
+import { withOutputs, type AgentStore, type OutputsContext } from "./store.ts";
+
+/** Duck-type the root store off the mounted element's `store` prop — the seam
+ *  the continuation-outputs context writes into to trigger a re-render. */
+function readStore(element: ReactNode): AgentStore<Record<string, unknown>> | null {
+  const store = (element as { props?: { store?: unknown } } | null)?.props?.store as
+    | { get?: unknown; set?: unknown }
+    | undefined;
+  return store && typeof store.get === "function" && typeof store.set === "function"
+    ? (store as AgentStore<Record<string, unknown>>)
+    : null;
+}
 
 export interface AgentHandle {
   host: AgentHost;
@@ -45,16 +57,47 @@ export function mountAgent(
   };
 
   const fiber = createFiber(host, onOps);
-  fiber.update(element);
+
+  // Continuation-outputs context, backed by the root store. `outputs` reads the
+  // reserved `__outputs` slot LIVE (a getter — so a re-render mid-flush sees an
+  // output written earlier in the same turn); `setOutput` merges into that slot,
+  // and the store change re-renders the tree (useSyncExternalStore) within the
+  // current flush, expanding the continuation and reconciling its grandchildren.
+  let store = readStore(element);
+  const ctx: OutputsContext = {
+    get outputs() {
+      return (store?.get() as { __outputs?: Record<string, unknown> } | undefined)?.__outputs ?? {};
+    },
+    setOutput: (name, output) => {
+      store?.set(
+        (s) =>
+          ({
+            ...(s as Record<string, unknown>),
+            __outputs: {
+              ...((s as { __outputs?: Record<string, unknown> }).__outputs ?? {}),
+              [name]: output,
+            },
+          }) as never
+      );
+    },
+  };
+
+  // Every render/dispatch/tick runs inside the context, so the boundary wrapper
+  // reads outputs and injects `__emit` uniformly across the React commit path.
+  const render = (el: ReactNode) => {
+    store = readStore(el) ?? store;
+    withOutputs(ctx, () => fiber.update(el));
+  };
+  render(element);
 
   return {
     host,
     fiber,
-    update: (el) => fiber.update(el),
-    dispatch: (fn) => fiber.flush(fn),
+    update: (el) => render(el),
+    dispatch: (fn) => withOutputs(ctx, () => fiber.flush(fn)),
     tick: () => {
       if (!(host instanceof SimHost)) throw new Error("tick() is for SimHost demos");
-      host.tick(fiber.flush);
+      withOutputs(ctx, () => host.tick(fiber.flush));
     },
     prompt: (budget) => renderPrompt(collectPrompt(fiber.container.children), budget),
     think: (budget = 120) => {

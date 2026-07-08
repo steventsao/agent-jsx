@@ -34,7 +34,7 @@
 import type { ReactNode } from "react"; // type-only; erases, never bundled
 import { collectInfra, collectPrompt, type HostNode } from "./tree.ts";
 import { renderPrompt } from "./prompt.ts";
-import { createStore, type AgentStore } from "./store.ts";
+import { createStore, withOutputs, type AgentStore, type OutputsContext } from "./store.ts";
 import { evaluateComponent } from "./compile/evaluate.ts";
 import type { InfraRecord } from "./types.ts";
 
@@ -51,6 +51,20 @@ export interface SpawnDescriptor {
   agent: string;
   /** Child input: serializable config minus the `kind` discriminator. */
   input: Record<string, unknown>;
+  /** True when the boundary carries a render-prop continuation — the delegate
+   *  should resolve a structured output (`{ output }`) that sets the parent's
+   *  reserved slot and expands the continuation, not just a report string. */
+  emits: boolean;
+}
+
+/** What a `delegate` may resolve: a plain string (folded via the boundary's
+ *  onResult callback) OR a structured `{ output }` for a continuation boundary
+ *  (routed into the reserved slot via the boundary's `__emit`, expanding its
+ *  grandchildren next round). */
+export type DelegateResult = string | { output: unknown };
+
+function isStructuredOutput(r: DelegateResult): r is { output: unknown } {
+  return typeof r === "object" && r !== null && "output" in r;
 }
 
 export interface RunReactiveWorkflowOptions<
@@ -66,9 +80,11 @@ export interface RunReactiveWorkflowOptions<
   /**
    * Delegate one fresh unit of work and resolve its result. In production this
    * is `session.task(prompt, { agent })` → response text; in tests it is a
-   * deterministic stub. The returned string is fed to the record's `onResult`.
+   * deterministic stub. A plain string is fed to the record's `onResult`; a
+   * structured `{ output }` is fed to the boundary's reserved `__emit` slot,
+   * expanding its render-prop continuation on the next round.
    */
-  delegate: (descriptor: SpawnDescriptor) => string | Promise<string>;
+  delegate: (descriptor: SpawnDescriptor) => DelegateResult | Promise<DelegateResult>;
   /** Loud circuit breaker: throw once this many delegating rounds is exceeded. */
   maxRounds?: number;
   /** Token budget for the final rendered prompt (priompt-lite). Default 400. */
@@ -100,8 +116,26 @@ export async function runReactiveWorkflow<
   // returns the live state, set(partial|fn) merges. Handler closures written
   // during a round mutate THIS, so the next evaluate sees the new state.
   const store = createStore<S>(opts.initialState);
+
+  // Continuation-outputs context backed by the same store's reserved __outputs
+  // slot. A boundary's __emit (from a structured delegate result) writes here;
+  // the next round's evaluate reads it LIVE and expands the continuation.
+  const ctx: OutputsContext = {
+    get outputs() {
+      return (store.get() as { __outputs?: Record<string, unknown> }).__outputs ?? {};
+    },
+    setOutput: (name, output) => {
+      store.set(
+        (s) =>
+          ({
+            ...s,
+            __outputs: { ...((s as { __outputs?: Record<string, unknown> }).__outputs ?? {}), [name]: output },
+          }) as S
+      );
+    },
+  };
   const evaluate = (): HostNode[] =>
-    evaluateComponent(opts.component, { ...opts.props, store } as P);
+    withOutputs(ctx, () => evaluateComponent(opts.component, { ...opts.props, store } as P));
 
   const delegated: string[] = [];
   const seen = new Set<string>();
@@ -129,14 +163,22 @@ export async function runReactiveWorkflow<
 
     for (const rec of fresh) {
       const { kind, ...input } = rec.config;
-      const descriptor: SpawnDescriptor = { stableId: rec.name, agent: String(kind), input };
+      const descriptor: SpawnDescriptor = {
+        stableId: rec.name,
+        agent: String(kind),
+        input,
+        emits: "__emit" in rec.handlers,
+      };
       delegated.push(rec.name);
       seen.add(rec.name);
       // `await` normalizes a sync or async delegate.
       const result = await opts.delegate(descriptor);
-      // Fold the result back through the record's own onResult (the callback
-      // prop realized). This is what mutates state and drives the next round.
-      rec.handlers.onResult?.(result);
+      // Route the result. A structured { output } sets the boundary's reserved
+      // slot via __emit → the continuation expands next round (grandchild
+      // descriptors). A plain string folds through the record's own onResult
+      // (the callback prop realized). Both mutate state and drive the next round.
+      if (isStructuredOutput(result)) rec.handlers.__emit?.(result.output);
+      else rec.handlers.onResult?.(result);
     }
     rounds++;
   }

@@ -133,7 +133,7 @@ export const ${profileExport} = defineAgentProfile({
   const runtimeImports = dynamicSubagents.length
     ? `import { evaluateTree } from "${rt}/compile/evaluate.ts";
 import { collectInfra } from "${rt}/tree.ts";
-import { createStore } from "${rt}/store.ts";
+import { createStore, withOutputs } from "${rt}/store.ts";
 import { ${child.exportName} } from "${child.importPath}";
 `
     : "";
@@ -154,14 +154,18 @@ const PROPS = ${JSON.stringify(spec.sampleProps ?? {})} as const;
 const STATIC_SUBAGENTS = new Set(${JSON.stringify(staticSubagentNames)});
 export function spawnPlan(input: Record<string, unknown> = PROPS, state: State = ${child.exportName}.spec.initialState as State) {
   const store = createStore<State>(state);
-  const desired = evaluateTree(${child.exportName}.spec.impl({ ...PROPS, ...input, store } as never)).flatMap((root) =>
-    collectInfra(root)
-  );
+  // Continuation grandchildren expand from the reserved __outputs slot once a
+  // child's emit has landed; \`emits\` marks a boundary whose delegate resolves a
+  // structured output.
+  const outputs = (state as { __outputs?: Record<string, unknown> }).__outputs ?? {};
+  const desired = withOutputs({ outputs, setOutput: () => {} }, () =>
+    evaluateTree(${child.exportName}.spec.impl({ ...PROPS, ...input, store, emit: () => {} } as never))
+  ).flatMap((root) => collectInfra(root));
   return desired
     .filter((r) => r.kind === "subagent" && !STATIC_SUBAGENTS.has(r.name))
     .map((r) => {
       const { kind, ...childInput } = r.config;
-      return { stableId: r.name, agent: String(kind), input: childInput };
+      return { stableId: r.name, agent: String(kind), input: childInput, emits: "__emit" in r.handlers };
     });
 }
 `
@@ -232,7 +236,7 @@ export function emitFlue(o: FlueEmitOptions): string {
 import { defineAgent } from "@flue/runtime";
 import { evaluateTree } from "${rt}/compile/evaluate.ts";
 import { collectInfra } from "${rt}/tree.ts";
-import { createStore } from "${rt}/store.ts";
+import { createStore, withOutputs } from "${rt}/store.ts";
 import { ${o.componentName} } from "${o.componentImport}";
 ${childImports}
 
@@ -265,16 +269,21 @@ ${subagentsLine}
  */
 ${staticDecl}export function spawnPlan(state: State) {
   const store = createStore<State>(state);
+  // Continuation grandchildren expand from the reserved __outputs slot: once a
+  // child's emit has landed in state.__outputs, this plan fans out the boundary's
+  // render-prop children (the workflow round that folded the emit calls spawnPlan
+  // again). \`emits\` marks a boundary whose delegate resolves a structured output.
+  const outputs = (state as { __outputs?: Record<string, unknown> }).__outputs ?? {};
   // .spec.impl renders the agent's OWN tree; a bare component call would be a
   // subagent boundary (parent composition), collapsing the whole plan to one.
-  const desired = evaluateTree(${o.componentName}.spec.impl({ ...PROPS, store })).flatMap((root) =>
-    collectInfra(root)
-  );
+  const desired = withOutputs({ outputs, setOutput: () => {} }, () =>
+    evaluateTree(${o.componentName}.spec.impl({ ...PROPS, store, emit: () => {} }))
+  ).flatMap((root) => collectInfra(root));
   return desired
     .filter((r) => r.kind === "subagent"${staticFilter})
     .map((r) => {
       const { kind, ...input } = r.config;
-      return { stableId: r.name, agent: String(kind), input };
+      return { stableId: r.name, agent: String(kind), input, emits: "__emit" in r.handlers };
     });
 }
 `;

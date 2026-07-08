@@ -1,52 +1,92 @@
 /**
- * Root of the 3-level STATIC hierarchy (layout-analyst → layout-reviewer →
- * bbox-extractor). This mirrors flue's native shape exactly:
+ * Root of the layout pipeline, expressed with CONTINUATION NESTING — Steven's
+ * target syntax verbatim (modulo the required `name` props):
  *
- *   export default defineAgent(() => ({ ..., subagents: [layoutReviewer] }));
+ *   <LayoutReviewer name="review:main" page={page}>
+ *     {(boxes) => boxes.map((bbox) => (
+ *       <BboxExtractor name={`bbox:${bbox.id}`} bbox={bbox} onSegment={…} />
+ *     ))}
+ *   </LayoutReviewer>
  *
- * where `layoutReviewer` is itself `defineAgentProfile({ ..., subagents: [bboxExtractor] })`.
- *
- * The impl ALWAYS renders <LayoutReviewer name="review:main" ...> — an
- * unconditional nested boundary, so it is STATIC infrastructure (present in
- * every render, at rest and under load). Nesting IS the spawn topology: the
- * analyst owns the reviewer, the reviewer owns its bbox extractors. The
- * compiler emits this as native `subagents:` arrays (flue) and one Durable
- * Object class per level whose childBinding reflects its own boundaries
- * (cloudflare) — no routing through a flat spawn plan.
+ * The analyst spawns the reviewer (static, always present) and passes it a
+ * function child — the CONTINUATION. The reviewer emits its detected boxes; the
+ * emitted output lands in the analyst's reserved slot and the continuation
+ * fans out one <BboxExtractor> per box. Those extractors are the analyst's OWN
+ * direct children (parent spawns them, parent env binds them, their segments
+ * fold back into analyst state) — grandchildren by topology, parent-owned by
+ * ownership. The continuation is pure: it re-renders from persisted state, so
+ * no closure ever serializes.
  */
 
 import { agentComponent } from "../../src/agent-component.tsx";
 import { useAgentState } from "../../src/state.ts";
 import { LayoutReviewer, type ReviewPage } from "./layout-reviewer.tsx";
+import { BboxExtractor } from "../pdf/bbox-extractor.tsx";
 
 export interface LayoutAnalystState extends Record<string, unknown> {
   /** The page to analyze; null at rest. Pushed in via applyState. */
   page: ReviewPage | null;
-  /** The reviewer's folded-up verdict, once it reports. */
+  /** Extracted text per region, folded up from the bbox extractors. */
+  segments: Record<string, string>;
+  /** Verdict once every detected region is read. */
   verdict: string | null;
 }
 
-export const initialLayoutAnalystState: LayoutAnalystState = { page: null, verdict: null };
+export const initialLayoutAnalystState: LayoutAnalystState = {
+  page: null,
+  segments: {},
+  verdict: null,
+};
 
-export const LayoutAnalyst = agentComponent<Record<string, never>, LayoutAnalystState>({
+export const LayoutAnalyst = agentComponent<Record<string, unknown>, LayoutAnalystState>({
   agentName: "layout-analyst",
   initialState: initialLayoutAnalystState,
   impl: ({ store }) => {
-    const { page, verdict } = useAgentState(store);
+    const { page, segments, verdict } = useAgentState(store);
+
+    const fold = (regionId: string, text: string) =>
+      store.set((s) => {
+        const segs = { ...s.segments, [regionId]: text };
+        const expected = s.page?.regions.map((r) => r.id) ?? [];
+        const complete = expected.length > 0 && expected.every((id) => id in segs);
+        return {
+          ...s,
+          segments: segs,
+          verdict: complete ? `reviewed ${s.page!.id}: ${expected.length} regions` : s.verdict,
+        };
+      });
+
     return (
       <>
-        {/* ALWAYS nested — the reviewer is the analyst's standing subagent.
-            The page rides down as serializable props (null at rest); a verdict
-            rides back up through the callback prop. */}
-        <LayoutReviewer
-          name="review:main"
-          page={page}
-          onVerdict={(v) => store.set({ verdict: v })}
-        />
+        {/* The reviewer is the analyst's standing subagent (static). Its emitted
+            boxes drive the continuation below — the extractors it maps are the
+            analyst's own children, so the segments fold back into THIS state. */}
+        <LayoutReviewer name="review:main" page={page}>
+          {(boxes) =>
+            boxes.map((bbox) => (
+              <BboxExtractor
+                key={bbox.id}
+                name={`bbox:${bbox.id}`}
+                regionId={bbox.id}
+                bbox={bbox.bbox}
+                getPdf={() => page?.pdfB64 ?? ""}
+                onSegment={fold}
+              />
+            ))
+          }
+        </LayoutReviewer>
 
         <prompt>
-          <sys p={10}>Analyze the document layout. Delegate review to the layout reviewer.</sys>
-          <msg p={6}>{verdict ? `verdict: ${verdict}` : page ? "review in progress" : "waiting for a page"}</msg>
+          <sys p={10}>
+            Analyze the document layout. Delegate detection to the reviewer; extract each region it emits.
+          </sys>
+          <msg p={6}>
+            {verdict
+              ? `verdict: ${verdict}`
+              : page
+                ? `review in progress (${Object.keys(segments).length} regions read)`
+                : "waiting for a page"}
+          </msg>
         </prompt>
       </>
     );

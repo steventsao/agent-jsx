@@ -10,7 +10,7 @@
 import { defineAgent } from "@flue/runtime";
 import { evaluateTree } from "../../src/compile/evaluate.ts";
 import { collectInfra } from "../../src/tree.ts";
-import { createStore } from "../../src/store.ts";
+import { createStore, withOutputs } from "../../src/store.ts";
 import { UptimeAgent } from "../uptime-agent.tsx";
 import { investigatorProfile } from "./investigator.flue.ts";
 
@@ -45,15 +45,20 @@ export default defineAgent(() => ({
  */
 export function spawnPlan(state: State) {
   const store = createStore<State>(state);
+  // Continuation grandchildren expand from the reserved __outputs slot: once a
+  // child's emit has landed in state.__outputs, this plan fans out the boundary's
+  // render-prop children (the workflow round that folded the emit calls spawnPlan
+  // again). `emits` marks a boundary whose delegate resolves a structured output.
+  const outputs = (state as { __outputs?: Record<string, unknown> }).__outputs ?? {};
   // .spec.impl renders the agent's OWN tree; a bare component call would be a
   // subagent boundary (parent composition), collapsing the whole plan to one.
-  const desired = evaluateTree(UptimeAgent.spec.impl({ ...PROPS, store })).flatMap((root) =>
-    collectInfra(root)
-  );
+  const desired = withOutputs({ outputs, setOutput: () => {} }, () =>
+    evaluateTree(UptimeAgent.spec.impl({ ...PROPS, store, emit: () => {} }))
+  ).flatMap((root) => collectInfra(root));
   return desired
     .filter((r) => r.kind === "subagent")
     .map((r) => {
       const { kind, ...input } = r.config;
-      return { stableId: r.name, agent: String(kind), input };
+      return { stableId: r.name, agent: String(kind), input, emits: "__emit" in r.handlers };
     });
 }

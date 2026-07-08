@@ -143,7 +143,12 @@ export class SimHost implements AgentHost {
   }
 
   /** Enqueue a subagent's work. Handlers are looked up at fire time, so a
-   *  re-render (or a post-hibernation rebind) always gets fresh closures. */
+   *  re-render (or a post-hibernation rebind) always gets fresh closures. A
+   *  completion carries a structured output: it is delivered to the boundary's
+   *  reserved `__emit` channel (present when the boundary has a render-prop
+   *  continuation) BEFORE its `onResult` callback — the parent writes the
+   *  output into its reserved slot, re-renders, and the continuation expands
+   *  its grandchildren. */
   private armSubagent(name: string): void {
     this.pendingWork.push({
       due: this.t + (this.world.subagentLatency ?? 2),
@@ -154,6 +159,7 @@ export class SimHost implements AgentHost {
         const result =
           this.world.subagentResult?.(live, this.t) ??
           `[${name}] investigated ${JSON.stringify(live.config)} → root cause: upstream dependency`;
+        live.handlers.__emit?.(result);
         live.handlers.onResult?.(result);
       },
     });
