@@ -1,0 +1,27 @@
+{
+  "_provenance": {
+    "note": "Two independent witnesses per chart page, from a REAL okra graphicbench run. Do not hand-edit — regenerate with scripts/gen-verify-fixture.ts against the okra checkout.",
+    "sourceRun": "2026-06-08-parse-html-parsebench-charts",
+    "sourceFile": "okra/data/eval-pdfs/graphicbench/assets/parse-html-runs/2026-06-08-parse-html-parsebench-charts/summary.json",
+    "dataset": "graphicbench / parsebench-chart-pages",
+    "witnesses": {
+      "textlayer": "deterministic PDF text-layer read (system \"textlayer\", cost_usd 0)",
+      "vlm-html": "VLM page-image read (system \"vlm-html\", gemini-3-flash-preview)"
+    },
+    "metric": "unique_number_coverage — fraction of the page's ground-truth numeric tokens each witness recovered (metrics.unique_number_coverage in the run)",
+    "aggregates": [
+      { "system": "textlayer", "numberCoverageAvg": 0.8691, "tokenCoverageAvg": 0.766, "n": 8 },
+      { "system": "vlm-html", "numberCoverageAvg": 0.6172, "tokenCoverageAvg": 0.8812, "n": 8 }
+    ]
+  },
+  "pages": [
+    { "pageId": "world-inequality-2026-p109", "sourceNumbers": 20, "textNumberCoverage": 1.0,    "vlmNumberCoverage": 0.25,   "textTokenCoverage": 0.6798, "vlmTokenCoverage": 0.8596 },
+    { "pageId": "digital-news-report-2022-p15", "sourceNumbers": 62, "textNumberCoverage": 0.6452, "vlmNumberCoverage": 0.8871, "textTokenCoverage": 0.7048, "vlmTokenCoverage": 0.9151 },
+    { "pageId": "digital-news-report-2022-p26", "sourceNumbers": 58, "textNumberCoverage": 0.9655, "vlmNumberCoverage": 0.8621, "textTokenCoverage": 0.7814, "vlmTokenCoverage": 0.9071 },
+    { "pageId": "natcat-climate-2023-p72",    "sourceNumbers": 6,  "textNumberCoverage": 1.0,    "vlmNumberCoverage": 0.6667, "textTokenCoverage": 0.9167, "vlmTokenCoverage": 0.875 },
+    { "pageId": "m-trends-2025-p41",          "sourceNumbers": 23, "textNumberCoverage": 0.8261, "vlmNumberCoverage": 0.6522, "textTokenCoverage": 0.7872, "vlmTokenCoverage": 0.883 },
+    { "pageId": "the-beat-jun2025-p36",       "sourceNumbers": 57, "textNumberCoverage": 0.5439, "vlmNumberCoverage": 0.8596, "textTokenCoverage": 0.6429, "vlmTokenCoverage": 0.9286 },
+    { "pageId": "whatnextcarindustry-p22",    "sourceNumbers": 22, "textNumberCoverage": 1.0,    "vlmNumberCoverage": 0.4545, "textTokenCoverage": 0.8155, "vlmTokenCoverage": 0.8447 },
+    { "pageId": "renewables-2025-p43",        "sourceNumbers": 36, "textNumberCoverage": 0.9722, "vlmNumberCoverage": 0.3056, "textTokenCoverage": 0.8,    "vlmTokenCoverage": 0.8364 }
+  ]
+}

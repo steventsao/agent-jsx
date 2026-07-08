@@ -1,0 +1,13 @@
+node_modules/
+*.tsbuildinfo
+.DS_Store
+
+compat/*/node_modules/
+compat/*/src/agents/
+compat/*/src/generated/
+compat/*/src/deploy-generated/
+compat/cloudflare/wrangler.deploy.jsonc
+
+# ParseBench eval intermediate: embeds all 6 PDFs as base64 (~900KB). Regenerate
+# with `bun scripts/pdf/eval-build-regions.tsx`.
+scripts/pdf/eval-regions.json

@@ -1,0 +1,35 @@
+{
+  "name": "agent-jsx",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "React's reconciler as an agent control plane: composition + behavior declared as components (props/state changes), priompt-style context rendering, execution left to the actor runtime.",
+  "scripts": {
+    "ex:uptime": "bun examples/uptime.tsx",
+    "ex:rehydrate": "bun examples/rehydrate.tsx",
+    "ex:verify": "bun examples/verify.tsx",
+    "ex:document-review": "bun examples/document-review.tsx",
+    "all": "bun examples/uptime.tsx && bun examples/rehydrate.tsx && bun examples/verify.tsx && bun examples/document-review.tsx && bun examples/compile.tsx",
+    "compile:document-review": "cd compat/document-review && bun run generate",
+    "test:document-review": "cd compat/document-review && bun run test",
+    "deploy:document-review": "cd compat/document-review && bun run deploy",
+    "gen:verify-fixture": "bun scripts/gen-verify-fixture.ts",
+    "typecheck": "tsc --noEmit",
+    "ex:compile": "bun examples/compile.tsx",
+    "fixtures": "bun scripts/gen-fixtures.tsx",
+    "fixtures:pdf": "bun scripts/pdf/build-fixture.tsx"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-reconciler": "^0.31.0",
+    "unpdf": "^1.6.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-reconciler": "^0.28.9",
+    "typescript": "^5.7.0"
+  },
+  "license": "Apache-2.0"
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "id": "title",
+    "bbox": {
+      "x0": 0.08,
+      "y0": 0.075,
+      "x1": 0.92,
+      "y1": 0.135
+    },
+    "text": "Unlocking Multimodal Document Intelligence: From Current Triumphs to Future Frontiers of Visual Document Retrieval"
+  },
+  {
+    "id": "authors",
+    "bbox": {
+      "x0": 0.08,
+      "y0": 0.135,
+      "x1": 0.92,
+      "y1": 0.158
+    },
+    "text": "Yibo Yan 1 , 2 , 3 , Jiahao Huo 1 , 2 , 4 , Guanbo Feng 1 , Mingdong Ou 2 , * , Yi Cao 2 ,"
+  },
+  {
+    "id": "abstract-left",
+    "bbox": {
+      "x0": 0.08,
+      "y0": 0.245,
+      "x1": 0.49,
+      "y1": 0.375
+    },
+    "text": "Abstract With the rapid proliferation of multimodal in- formation, Visual Document Retrieval (VDR) has emerged as a critical frontier in bridging the gap between unstructured visually rich data and precise information acquisition. Unlike traditional natural image retrieval, visual doc- uments exhibit unique characteristics defined"
+  },
+  {
+    "id": "intro-left",
+    "bbox": {
+      "x0": 0.06,
+      "y0": 0.51,
+      "x1": 0.49,
+      "y1": 0.6
+    },
+    "text": "pects: multimodal embedding models , multi- modal reranker models , and the integration of Retrieval-Augmented Generation (RAG) and Agentic systems for complex document intel- ligence. Finally, we identify persistent chal- lenges and outline promising future directions,"
+  }
+]

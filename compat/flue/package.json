@@ -1,0 +1,19 @@
+{
+  "name": "agent-jsx-compat-flue",
+  "private": true,
+  "type": "module",
+  "description": "Proves generated flue modules load against the REAL @flue/runtime from the local checkout (~/dev/flue) \u2014 its validators are the assertion.",
+  "scripts": {
+    "generate": "bun scripts/generate.tsx",
+    "test": "bun run generate && vitest run && bun test/pdf-target.check.ts"
+  },
+  "dependencies": {
+    "@flue/runtime": "1.0.0-beta.9",
+    "unpdf": "^1.6.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^5.7.0",
+    "vitest": "~3.2.0"
+  }
+}

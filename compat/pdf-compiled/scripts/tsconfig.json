@@ -1,0 +1,15 @@
+{
+  // The generate script runs in the DEV context (bun, real React transform);
+  // the package tsconfig's #agentjsx alias is for the COMPILED artifacts it
+  // produces — which don't exist until this script runs. Nearest-tsconfig
+  // rules make this override apply to scripts/ only.
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true
+  }
+}

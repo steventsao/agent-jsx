@@ -1,0 +1,29 @@
+// Real worker config for the compat proof. Bindings/migrations mirror the
+// emitter's generated fragment (src/generated/uptime.wrangler.jsonc). The
+// compat date + nodejs runner flags match the cloudflare-agents-playground
+// test config (the known-good setup for agents 0.8.5 under vitest-pool-workers).
+{
+  "name": "agent-jsx-compat",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-01-28",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "experimental",
+    // the vitest-pool-workers runner needs these node modules enabled
+    "enable_nodejs_tty_module",
+    "enable_nodejs_fs_module",
+    "enable_nodejs_http_modules",
+    "enable_nodejs_perf_hooks_module",
+    "enable_nodejs_v8_module",
+    "enable_nodejs_process_v2"
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "UPTIME", "class_name": "UptimeDurable" },
+      { "name": "INVESTIGATOR", "class_name": "InvestigatorDurable" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["UptimeDurable", "InvestigatorDurable"] }
+  ]
+}
