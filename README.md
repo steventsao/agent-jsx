@@ -11,7 +11,9 @@
 > unproven. Do not run this in production; do point it at problems and file
 > what breaks.
 
-**A priompt-shaped declarative interface for agents — not a React runtime.** JSX is used the way priompt uses it: a pure function from (props, state) to a *declaration*, rendered to data. priompt declares what enters the context window under a token budget; agent-jsx extends the same stance to the agent's entire world — the capability surface (sensors, schedules, subagents, tools, tasks) *and* the context window are both derived from state by evaluation, then a durable host diffs and applies. Parent→child data is props; function props are capabilities (callbacks and method RPC); everything the runtimes make you hand-write (`getAgentByName` plumbing, RPC stubs, wrangler bindings, migrations, flue profiles) is compiled from the declaration.
+**Compose agents across durable boundaries — the compiler generates every wire between them.** A parent nests child agents. Serializable props flow down as state pushes across the actor boundary. Function props cross that boundary as capabilities: callbacks the child fires back, and request/response methods it calls. So the set of function props a parent passes IS the child's policy — its capability grant, its ACL. Nesting is spawn topology. From that one declaration the compiler emits everything both runtimes otherwise make you hand-write: `getAgentByName` plumbing and RPC stubs, Durable Object bindings and migrations, flue profiles, and spawn plans.
+
+JSX is the vehicle, used the way priompt uses it: a pure function from (props, state) to a *declaration*, rendered to data — never a runtime. Both the capability surface (subagents, sensors, schedules, tools, tasks) and the context window derive from state by evaluation; a durable host diffs and applies. The rest of this README is about what crosses the boundary between agents.
 
 ```tsx
 function UptimeAgent({ sites, store }) {
@@ -64,123 +66,40 @@ export const UptimeAgent = agentComponent<UptimeProps, UptimeState>({
 
 The spec is what the compiler statically analyzes — state shape, props, and prompt strategy all live in the component file, with no separate state-type / initial-state / props plumbing threaded through the emitters.
 
-## Premises (sharpened)
+## Premises
 
-1. **JSX is a declarative interface, not a runtime.** A component is a pure function `(props, state) → declaration`. This is priompt's stance — the one JSX-for-LLMs approach that survived — extended from prompt layout to agent composition.
-2. **A render produces data: capability records, plus an OPTIONAL context window.** The capability surface — flat records (sensor / schedule / subagent / tool / task), each identified by a mandatory stable `name` — is the core, always present. The context window is optional and has two sources: a `<prompt>` subtree when you want priompt constraints (blocks with `p`/`prel` priorities, assembled under a token budget), or the imperative `spec.getPrompt(state)` think-seam when you just want a string from state. Render neither and the agent simply has no context layer. Nothing else.
-3. **There is no lifecycle in the model.** "Mount/unmount" is the HOST's diff of consecutive declarations — create/update/remove by `name`, never by tree position. Effects, durability, retries, journals belong to hosts (cloudflare/agents DOs, flue workflows, CF Workflows steps, the sim). The declaration never executes anything.
-4. **React never ships.** The evaluator is ~70 lines; compiled artifacts carry a 15-line JSX *data* runtime (`#agentjsx`). React — types, the live sim, StrictMode discipline — is optional dev tooling, and the parity test proves the two paths byte-identical, which is what licenses shipping without it.
-5. **Control flow is JavaScript.** `.map` is fan-out, `if` is a conditional capability, function extraction is composition. No combinator DSL — priompt's move again.
-6. **Cross-boundary communication is declared, then scaffolded at build.** Serializable props push down (`setProps` RPC); function props become capabilities (CallbackRefs, request/response method props); bulk data rides bindings (blob refs, #15). The compiler owns the wiring the way it owns wrangler config — once, at build.
+Cross-agent composition — what this is for:
 
-The name "fiber" survives as the dev harness's implementation detail (a react-reconciler host powers the live sim), not the model. The model is: evaluate → data → host diff.
+1. **Composition is nesting across durable boundaries.** A parent nests child agents; nesting is spawn topology and durable ownership. The child's internals — its tools, schedules, prompt, state — never enter the parent's tree. One small typed boundary sits between two agents.
+2. **Serializable props are the child's input, pushed across the boundary.** A parent re-render that changes a child's props compiles to a `setProps` RPC; the child re-renders. Props flow down between actors the way they flow down a React tree.
+3. **Function props are capabilities, compiled to RPC.** A callback prop (`onResult`) is the child's line back to the parent: codegen routes it to the parent's dispatcher, which invokes the freshest closure from the parent's latest render. A method prop (`lookupRunbook`) is request/response — the child awaits it like a local function, and the parent's live closure computes the answer. Closures never serialize; they re-render.
+4. **The function props a parent passes ARE the child's policy.** The capability grant is the ACL: a child can call back and invoke exactly the methods the parent handed it at the JSX call site, and nothing else. Policy composes at the boundary instead of scattering across profile names, harness calls, dispatcher code, and env bindings.
 
-## Subagent composition: the actual problem this solves
+Mechanics — how it holds up:
+
+5. **A render produces data, not execution.** A component is a pure function `(props, state) → declaration`: flat capability records (sensor / schedule / subagent / tool / task, each with a mandatory stable `name`), plus an optional context window — a `<prompt>` subtree under a token budget, the `spec.getPrompt(state)` seam, or nothing. This is priompt's stance, extended from prompt layout to the agent's whole world.
+6. **There is no lifecycle.** The host diffs consecutive declarations — create / update / remove by `name`, never by tree position. Effects, durability, retries, and journals belong to the host: a Durable Object, a flue workflow, a CF Workflows step, the sim.
+7. **React never ships.** The evaluator is ~70 lines; compiled artifacts carry a 15-line JSX *data* runtime (`#agentjsx`). React — types, the live sim, StrictMode discipline — stays dev tooling; the parity test proves the two paths byte-identical, so the artifact ships without it.
+8. **Control flow is JavaScript.** `.map` fans out, `if` gates a capability, function extraction composes. No combinator DSL.
+
+"Fiber" is the dev harness's implementation detail — a react-reconciler host powers the live sim — not the model. The model is: evaluate → data → host diff.
+
+## Composition across agent boundaries
 
 Composing agents is where both target runtimes are weakest, and where React is strongest:
 
 | | cloudflare/agents today | flue today | as components |
 |---|---|---|---|
-| parent→child wiring | `getAgentByName(env.BINDING, name)` + hand-typed Env + wrangler bindings + migrations | `subagents: [...]` baked into definitions; DO class/migration naming ceremony | **nesting** — `<Investigator .../>` inside the parent's tree |
+| parent→child wiring | `getAgentByName(env.BINDING, name)` + hand-typed Env + wrangler bindings + migrations | `subagents: [...]` baked into definitions; DO class/migration naming ceremony | **nesting** — a child agent rendered inside the parent's tree |
 | child input | ad-hoc RPC methods you write | task payloads | **props** — serializable props are the child's contract; a parent re-render that changes them compiles to a `setProps` RPC |
-| child→parent results | more hand-written `@callable`s | task return values | **callback props** — `onResult={fn}` compiles to a CallbackRef; the child's impl calls an ordinary function, codegen routes it to the parent's dispatcher, which invokes the freshest closure from the latest render |
-| lifecycle / identity | manual spawn, manual cleanup, `{ idempotent: true }` bookkeeping | spawn-plan design doc (proposed) | **mount/unmount** under React keys + a mandatory stable `name` |
+| child→parent results | more hand-written `@callable`s | task return values | **callback props** — `onResult={fn}` compiles to a CallbackRef; the child calls an ordinary function, codegen routes it to the parent's dispatcher, which invokes the freshest closure from the latest render |
+| lifecycle / identity | manual spawn, manual cleanup, `{ idempotent: true }` bookkeeping | spawn-plan design doc (proposed) | **create/remove** by a mandatory stable `name` |
 
-Declare the boundary once ([examples/investigator.tsx](examples/investigator.tsx)):
+flue already has the durable execution primitives — `defineAgent`, `defineAgentProfile`, `defineWorkflow`, `session.task`. What it lacks is a hierarchical desired-state layer: in native flue the workflow author owns the orchestration trace by hand. Here the component tree is that layer, and the compiler owns every wire between agents.
 
-```tsx
-export const Investigator = agentComponent<InvestigatorProps, InvestigatorState>({
-  agentName: "investigator",
-  initialState: { checked: [] },
-  sampleProps: { site: "https://example.com", since: 0, onResult: () => {} },
-  impl: ({ site, since, onResult, store }) => (
-    <>
-      <tool name="fetch-logs" ... />
-      <schedule name="sla-deadline" every={8} onFire={() => onResult(`[${site}] no root cause within SLA`)} />
-      <prompt><sys p={10}>You investigate ONE outage: {site}, down since t={since}.</sys></prompt>
-    </>
-  ),
-});
-```
+### Static nesting maps to flue's native shape
 
-Compose it like any component (`examples/uptime-agent.tsx`):
-
-```tsx
-{down.map((site) => (
-  <Investigator key={site} name={`investigate:${site}`} site={site}
-                since={statuses[site]!.since} onResult={record(site)} />
-))}
-```
-
-`bun ex:compile` then generates, from these two component files:
-
-- **`uptime.cloudflare.ts`** — `UptimeAgentDurable` + `InvestigatorDurable` over a generated `FiberAgentBase`: typed `this.subagent(kind, name)` accessors, `setProps` push, `CallbackRef` proxies, one `onAgentEvent` dispatcher, schedule convergence against `getSchedules()`.
-- **`uptime.wrangler.jsonc`** — DO bindings + migrations for every generated class.
-- **`uptime.flue.ts` + `investigator.flue.ts`** — parent module (resting prompt → instructions, `spawnPlan(state)` for the dynamic residue — flue's own proposed render-prop shape) + child `defineAgentProfile` (props = task input, callback = task result).
-- **`uptime.workflow.ts`** — a flue `defineWorkflow` adapter that runs the reactive trace: evaluate at state → delegate fresh children through the flue harness → fold results through the callback closure → repeat until no new children appear.
-
-## What JSX adds on top of flue
-
-flue already has the right durable execution primitives: `defineAgent`, `defineAgentProfile`, `defineWorkflow`, and `session.task`. What it does not have is a hierarchical desired-state layer. In native flue, the workflow author usually owns the orchestration trace directly: call this task, inspect the result, maybe call the next task, remember what has already been delegated. In agent-jsx, the workflow authoring surface is the component tree, and the generated flue workflow is only the harness adapter.
-
-That difference shows up in ordinary code.
-
-**Conditional fan-out is just data rendering:**
-
-```tsx
-{incidents.map((incident) => (
-  <Investigator
-    key={incident.site}
-    name={`investigate:${incident.site}`}
-    site={incident.site}
-    since={incident.since}
-    onResult={(finding) => store.set((s) => ({
-      ...s,
-      findings: { ...s.findings, [incident.site]: finding },
-    }))}
-  />
-))}
-```
-
-The `.map` is the fan-out. The stable `name` is the durable identity. If the same incident is still present on the next render, it is not delegated twice. If another incident appears, the rendered tree has one more child and the host sees one fresh record. The flue target receives this as `spawnPlan(state)` plus the reactive workflow loop; the Cloudflare target receives it as child Durable Object reconciliation.
-
-**Hierarchy scopes capability:**
-
-```tsx
-<Investigator
-  name={`investigate:${site}`}
-  site={site}
-  since={statuses[site]!.since}
-  onResult={record(site)}
-  lookupRunbook={(s) => `restart edge pods for ${s}`)}
-/>
-```
-
-The parent grants exactly the capabilities it passes as props. Serializable props are child input. Callback props are the child's line back to the parent. Method props are request/response RPC on the Cloudflare target; on flue's one-shot task boundary, the generated child profile keeps the simpler task-input/task-result shape. Either way, the boundary is declared once at the JSX call site instead of being scattered across profile names, harness calls, dispatcher code, and environment bindings.
-
-**Children remain agents, not steps:**
-
-```tsx
-export const Investigator = agentComponent({
-  agentName: "investigator",
-  initialState: { checked: [] },
-  impl: ({ site, since, onResult, store }) => (
-    <>
-      <tool name="fetch-logs" description="Pull recent logs" run={() => `logs(${site})`} />
-      <schedule name="sla-deadline" every={8} onFire={() => onResult(`[${site}] still open`)} />
-      <prompt>
-        <sys p={10}>Investigate {site}, down since t={since}.</sys>
-      </prompt>
-    </>
-  ),
-});
-```
-
-The parent does not know the investigator's tools, schedules, prompt, or state shape. It only knows the child's props. That is the part flue's flat profile list cannot express by itself: nested ownership with a small typed boundary between agents.
-
-## Flue subagent bindings vs JSX nesting
-
-Native flue declares subagents as named profiles on the parent agent/profile. The name lives on `defineAgentProfile`, not on `defineAgent`; `session.task(text, { agent })` selects one of those declared names.
+flue expresses a static hierarchy directly: profiles nested by reference, each nested profile carrying its own `subagents: [...]`. A three-level hierarchy in native flue reads:
 
 ```ts
 export const bboxExtractor = defineAgentProfile({
@@ -199,55 +118,77 @@ export default defineAgent(() => ({
   instructions: "Analyze the document layout.",
   subagents: [layoutReviewer],
 }));
-
-// Later, in a workflow/session:
-await session.task("Review page 1", { agent: "layout-reviewer" });
 ```
 
-agent-jsx writes the same boundary as component nesting:
+agent-jsx writes the same hierarchy as component nesting. The root's impl always nests `<LayoutReviewer>`; the reviewer's own impl always nests one `<BboxExtractor>` ([examples/layout-review/](examples/layout-review/)):
 
 ```tsx
-<LayoutReviewer
-  name={`review:${page.id}`}
-  page={page}
-  onResult={(verdict) => store.set({ verdict })}
-/>
+// layout-analyst.tsx — the root always nests the reviewer
+<LayoutReviewer name="review:main" page={page} onVerdict={(v) => store.set({ verdict: v })} />
+
+// layout-reviewer.tsx — the reviewer always nests one extractor (reused from examples/pdf)
+<BboxExtractor name="bbox:main:header" regionId="header" bbox={HEADER_BBOX}
+               getPdf={() => page?.pdfB64 ?? ""} onSegment={fold} />
 ```
 
-and emits the flue pieces:
+The compiler discovers the levels transitively and emits flue's native shape at every level: the root `defineAgent` carries `subagents: [layoutReviewerProfile]`, the mid-level `defineAgentProfile` carries its own `subagents: [bboxExtractorProfile]`, and each import crosses to the child's own module ([fixtures/layout-analyst.flue.ts](fixtures/layout-analyst.flue.ts), [fixtures/layout-reviewer.flue.ts](fixtures/layout-reviewer.flue.ts)):
 
 ```ts
-// layout.flue.ts
-import { layoutReviewerProfile } from "./layout-reviewer.flue.ts";
+// layout-analyst.flue.ts — root
+import { layout_reviewerProfile } from "./layout-reviewer.flue.ts";
+export default defineAgent(() => ({ /* ... */ subagents: [layout_reviewerProfile] }));
 
-export default defineAgent(() => ({
-  model: "...",
-  instructions: "...rendered parent prompt...",
-  subagents: [layoutReviewerProfile],
-}));
-
-// layout-reviewer.flue.ts
-export const layoutReviewerProfile = defineAgentProfile({
-  name: "layout-reviewer",
-  instructions: "...rendered child prompt...",
+// layout-reviewer.flue.ts — mid: a profile carrying its OWN subagents (flue's sketch)
+import { bbox_extractorProfile } from "./bbox-extractor.flue.ts";
+export const layout_reviewerProfile = defineAgentProfile({
+  /* ... */ subagents: [bbox_extractorProfile],
 });
-
-export function spawnPlan(state) {
-  return [{ stableId: "review:p1", agent: "layout-reviewer", input: { page } }];
-}
 ```
+
+Nesting is spawn topology: `bun ex:layout-review` drives the sim host and prints those same three levels as a spawn op log. Only the dynamic residue — a `.map` that fans out per state or prop — leaves this static shape, and it lands in `spawnPlan`. The static hierarchy is never flattened into a plan.
 
 | Concern | Native flue binding | agent-jsx JSX to flue |
 |---|---|---|
 | Child declaration | `defineAgentProfile({ name, instructions, subagents })` | `agentComponent({ agentName, impl })` |
-| Parent binding | Static `subagents: [profile]` array on `defineAgent` or another profile | Parent renders `<Child name=... />`; compiler emits the child profile and delegation plan |
-| Nested children | Profiles can contain their own `subagents: [...]` arrays | Child components can own their own nested components; the boundary is still props/callbacks |
+| Parent binding | Static `subagents: [profile]` on `defineAgent` or another profile | Parent nests `<Child name=... />`; compiler emits the profile array, and the spawn plan for dynamic children |
+| Nested children | Profiles carry their own `subagents: [...]` arrays | Child components own their own nested components; the compiler recurses and emits `subagents:` at every level |
 | Instance identity | The profile name selects a reusable delegation target | `name` is the durable instance id; `agentName`/`kind` selects the reusable target |
-| Parent → child input | Usually embedded in the task text or structured result prompt | Serializable props become the delegated task input |
-| Child → parent result | `session.task(...)` resolves to the child task response | `onResult` is folded through the rendered callback closure; on flue this is still a task return |
-| Dynamic presence | The workflow author decides when to call `session.task` | State decides whether `<Child />` renders; the generated workflow delegates fresh stable ids |
+| Parent → child input | Embedded in task text or a structured result prompt | Serializable props become the delegated task input |
+| Child → parent result | `session.task(...)` resolves to the child task response | `onResult` folds through the rendered callback closure; on flue this is still a task return |
+| Dynamic presence | The workflow author decides when to call `session.task` | State or props decide whether `<Child />` renders; the compiler splits static (native `subagents:`) from dynamic (`spawnPlan`) |
 
-So the flue target is not replacing flue's subagent mechanism. It is compiling a nested JSX ownership tree down to flue's existing pieces: named profiles for reusable agent behavior, stable ids for per-incident instances, and a `defineWorkflow` loop that calls `session.task(..., { agent })` when the render reveals new children.
+The flue target does not replace flue's subagent mechanism. It compiles a nested JSX ownership tree down to flue's existing pieces: named profiles for reusable behavior, native `subagents:` arrays for the static hierarchy, stable ids for per-instance children, and a `defineWorkflow` loop that calls `session.task(..., { agent })` when the render reveals new children.
+
+### Dynamic fan-out is a `.map`
+
+Where the hierarchy varies with state, the fan-out is ordinary data rendering ([examples/uptime-agent.tsx](examples/uptime-agent.tsx) composing [examples/investigator.tsx](examples/investigator.tsx)):
+
+```tsx
+{incidents.map((incident) => (
+  <Investigator
+    key={incident.site}
+    name={`investigate:${incident.site}`}
+    site={incident.site}
+    since={incident.since}
+    onResult={(finding) => store.set((s) => ({
+      ...s,
+      findings: { ...s.findings, [incident.site]: finding },
+    }))}
+  />
+))}
+```
+
+The `.map` fans out; the stable `name` is the durable identity. The same incident on the next render is not delegated twice; a new incident adds one child record. The flue target receives this as `spawnPlan(state)` plus the reactive workflow loop; the Cloudflare target receives it as child Durable Object reconciliation.
+
+The set of props the parent passes IS the capability grant:
+
+```tsx
+<Investigator name={`investigate:${site}`} site={site} since={statuses[site]!.since}
+              onResult={record(site)}
+              lookupRunbook={(s) => `restart edge pods for ${s}`} />
+```
+
+Serializable props are child input. `onResult` is the child's line back. `lookupRunbook` is a method prop — request/response RPC on the Cloudflare target; on flue's one-shot task boundary the generated profile keeps the task-input/task-result shape. Either way the boundary is declared once at the call site. The parent never learns the child's tools, schedules, prompt, or state shape — only its props. That is what flue's flat profile list cannot express by itself: nested ownership with a small typed boundary between agents.
 
 ## Human input as topology
 
@@ -286,7 +227,7 @@ function DocumentReviewAgent({ store }: { store: AgentStore<DocumentReviewState>
 }
 ```
 
-The authored client policy is intentionally boring:
+The authored client policy is a plain reducer over durable state:
 
 ```ts
 runDocumentReviewAction(state, {
@@ -338,7 +279,7 @@ So the claim is narrow: agent-jsx is not trying to out-client Flue or CopilotKit
 
 ## State ownership by target
 
-The authoring pattern is intentionally local: each agent component is written against `props` and its own `store`; composition is the only place where a parent binds child props and callbacks. The compiler validates that boundary in two directions:
+The authoring pattern stays local: each agent component reads its own `props` and `store`; composition is the only place a parent binds a child's props and callbacks. The compiler validates that boundary in two directions:
 
 | Question | Validation | Current answer |
 |---|---|---|
@@ -475,7 +416,7 @@ The second level is what a UI renderer never needed and an agent runtime can't l
 | [priompt](https://github.com/anysphere/priompt) | the context window as responsive layout under a token viewport | `src/prompt.ts` |
 | [agents-as-components](https://github.com/steventsao/agents-as-components) | the boundary conditions: what must never happen (LLM calls in render/effects, reconciler as executor) | `examples/rehydrate.tsx` StrictMode section |
 
-## What's deliberately NOT here
+## What's NOT here
 
 - **No LLM step as a component.** `<Agent prompt=...>` executing a completion is the GenSX/AI.JSX shape that died. The single `think()` seam assembles the rendered prompt and hands it to whatever executes (mock here; `AIChatAgent`/Anthropic in production).
 - **No workflow combinators.** Chains/loops of LLM steps belong to durable workflow code (or the sibling repo's interpreter), not to this tree. This tree only declares *standing* capabilities.
@@ -494,12 +435,15 @@ src/state.ts             agent store + useAgentState (+ static-eval mode)
 src/agent.ts             mountAgent(): update / tick / prompt / think / unmount
 src/compile/evaluate.ts  the React-free element walker (parity-proven)
 src/compile/analyze.ts   static/dynamic split via partial evaluation
-src/compile/emit-cloudflare.ts  DO classes + subagent/callback glue + wrangler
+src/compile/graph.ts     transitive discovery: the reachable agent graph, per level
+src/compile/emit-cloudflare.ts  one DO class per level (own childBinding) + wrangler
 src/compile/emit-client-api.ts  generated HTTP routes + browser client/page shell
-src/compile/emit-flue.ts        flue parent module + child profiles + spawnPlan
-examples/uptime-agent.tsx   the parent agent (written once, three consumers)
-examples/investigator.tsx   the child agent (props in, callback out)
-examples/uptime.tsx         the loopy loop live under React (flagship)
+src/compile/emit-flue.ts        native subagents: at every level + dynamic spawnPlan
+examples/uptime-agent.tsx   a parent agent (written once, three consumers)
+examples/investigator.tsx   a child agent (props in, callback out)
+examples/uptime.tsx         the loopy loop live under React (flagship, dynamic fan-out)
+examples/layout-review/     3-level static hierarchy: analyst → reviewer → bbox-extractor
+examples/layout-review/demo.tsx     runnable spawn-topology trace (bun ex:layout-review)
 examples/document-review-agent.tsx  human-input review loop over a document-channel PDF
 examples/document-review-actions.ts  authored button/action policy
 examples/document-review-client.ts  button-shaped client facade (OK / Try harder)
