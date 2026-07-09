@@ -119,6 +119,31 @@ export interface AgentBoundaryProps {
  *  with the child's emitted output to produce the parent's grandchildren. */
 export type AgentContinuation<O> = (output: O) => ReactNode;
 
+/**
+ * A capability SLOT HANDLE — the marker a tool-slot provider's boundary passes to
+ * its render-prop continuation IN PLACE OF an emitted output. Binding it to a
+ * child boundary's prop registers a model-tool named after the PROP KEY, targeting
+ * that child, schema'd by the child's spec (see src/compile/slots.ts + the
+ * cloudflare emitter's agentTools mode). Its identity is a stable string tag (it
+ * survives JSON), so a slot-handle continuation is distinguished from an
+ * output-continuation by TYPE, never by guessing from syntax.
+ */
+export interface ToolSlotHandle {
+  readonly __agentJsxToolSlot: true;
+  /** agentName of the slot PROVIDER — routes the emitted getTools to that class. */
+  readonly provider: string;
+}
+export function toolSlotHandle(provider: string): ToolSlotHandle {
+  return { __agentJsxToolSlot: true, provider };
+}
+export function isToolSlotHandle(x: unknown): x is ToolSlotHandle {
+  return (
+    typeof x === "object" &&
+    x !== null &&
+    (x as { __agentJsxToolSlot?: unknown }).__agentJsxToolSlot === true
+  );
+}
+
 /** Validate a value at a boundary, throwing LOUDLY with the boundary's identity
  *  when it does not match. Wraps whatever the schema's `parse` throws (zod's
  *  ZodError message, a custom validator's error, …) with the boundary name +
@@ -159,38 +184,50 @@ export function agentComponent<
     const { name, children, ...childProps } = props;
     const ctx = getOutputs();
     const hasContinuation = typeof children === "function";
+    const isToolSlotProvider = spec.toolSlot === true;
+    // A boundary is a TOOL-SLOT BINDING when one of its props is a slot handle
+    // (bound at the composition site, e.g. `<Worker onCall={handle} />`). Its
+    // real input arrives from the MODEL at tool-call time, not here (COMPAT
+    // investigation: agentTool validates inputSchema at the model boundary), so
+    // input validation is skipped for it.
+    const isToolSlotBinding = Object.values(childProps).some(isToolSlotHandle);
 
     // Validate the child's serializable INPUT against inputSchema — the props
     // that cross as `setProps`, callbacks excluded (they compile to RPC, not
     // data). A mismatch throws loudly, naming the boundary. Runs on every render
     // (sim, generated DO, discovery), so representative sampleProps must also
     // satisfy the schema — the contract holds uniformly at compile and run time.
-    if (spec.inputSchema) {
+    if (spec.inputSchema && !isToolSlotBinding) {
       const input: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(childProps)) if (typeof v !== "function") input[k] = v;
       parseAtBoundary(spec.inputSchema, input, "input", name, spec.agentName);
     }
 
     // Reserved output slot. A real emitted output wins; at compile time (sample
-    // expansion) the boundary expands at spec.sampleOutput so continuation
-    // grandchildren are statically discoverable. No output → no continuation.
+    // expansion) the boundary expands so continuation grandchildren are statically
+    // discoverable — a tool-slot provider expands at a slot HANDLE (a marker,
+    // never output-gated), an output-emitter at spec.sampleOutput. No output → no
+    // continuation. Distinguished by TYPE (spec.toolSlot), never by syntax.
     const realOutput = ctx.outputs[name];
     const output =
       realOutput !== undefined
         ? realOutput
         : ctx.expandSamples && hasContinuation
-          ? spec.sampleOutput
+          ? isToolSlotProvider
+            ? toolSlotHandle(spec.agentName)
+            : spec.sampleOutput
           : undefined;
 
-    // Inject __emit ONLY when a continuation is present — its presence is the
-    // signal a host uses to route a child's emitted output into the parent's
-    // reserved slot (SimHost/React: on completion; CF: reserved dispatcher
-    // event; workflow: a structured delegate result). Without a continuation a
-    // child's emit is a no-op, so we do not inject and existing boundaries are
-    // byte-identical. The emit gate also VALIDATES the output against
-    // outputSchema before it is written — the parent never records a malformed
-    // continuation result.
-    const emitProp = hasContinuation
+    // Inject __emit ONLY when an OUTPUT continuation is present — its presence is
+    // the signal a host uses to route a child's emitted output into the parent's
+    // reserved slot (SimHost/React: on completion; CF: reserved dispatcher event;
+    // workflow: a structured delegate result). A tool-slot provider emits no
+    // output (its handle is a capability, not a result), so it never injects
+    // __emit; and a boundary without a continuation is a no-op, so existing
+    // boundaries stay byte-identical. The emit gate also VALIDATES the output
+    // against outputSchema before it is written — the parent never records a
+    // malformed continuation result.
+    const emitProp = hasContinuation && !isToolSlotProvider
       ? {
           __emit: (o: O) => {
             if (spec.outputSchema) parseAtBoundary(spec.outputSchema, o, "output", name, spec.agentName);

@@ -16,7 +16,8 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { analyze } from "../src/compile/analyze.ts";
-import { discoverAgents, type AgentModule } from "../src/compile/graph.ts";
+import { analyzeAgent, discoverAgents, type AgentModule } from "../src/compile/graph.ts";
+import { discoverToolSlots } from "../src/compile/slots.ts";
 import { emitCloudflare, type ChildAgentSpec } from "../src/compile/emit-cloudflare.ts";
 import {
   emitFlue,
@@ -36,6 +37,7 @@ import { BboxExtractor } from "../examples/pdf/bbox-extractor.tsx";
 import { ResearchDesk, initialResearchDeskState } from "../examples/tool-slot/research-desk.tsx";
 import { Worker } from "../examples/tool-slot/worker.tsx";
 import { Summarizer } from "../examples/tool-slot/summarizer.tsx";
+import { Coordinator } from "../examples/tool-slot/coordinator.tsx";
 
 export const SITES = ["https://a.example", "https://b.example", "https://c.example"];
 const MODEL = "openrouter/google/gemini-3.1-flash-lite-preview";
@@ -187,6 +189,51 @@ export function buildSchemaFixtures(): Record<string, string> {
   };
 }
 
+/**
+ * The TOOL-SLOT family (Steven's acceptance example): the SAME coordinator
+ * (names no child) composed TWICE, its `onCall` slot filled by a different child
+ * each time. The cloudflare fixtures show the version-gated getTools() diff
+ * (onCall → agentTool(ToolWorkerDurable) vs agentTool(ToolSummarizerDurable));
+ * the flue fixtures show the native subagents: roster diff. Both children satisfy
+ * the same slot — hierarchy comes from the composition site.
+ */
+export function buildToolSlotFixtures(): Record<string, string> {
+  const root = { spec: Coordinator.spec, componentName: "Coordinator", componentImport: "../agents/coordinator.tsx" };
+  const analysis = analyzeAgent({
+    spec: Coordinator.spec,
+    exportName: "Coordinator",
+    importPath: "../agents/coordinator.tsx",
+  });
+
+  const withWorker = <Coordinator name="coord">{(h) => <Worker name="w" onCall={h} />}</Coordinator>;
+  const withSummarizer = <Coordinator name="coord">{(h) => <Summarizer name="s" onCall={h} />}</Coordinator>;
+
+  const cf = (child: { spec: typeof Worker.spec }, exportName: string, importFile: string, composition: unknown) =>
+    emitCloudflare(root, [{ spec: child.spec, exportName, importPath: `../agents/${importFile}` }], analysis, {
+      runtimeImport: "./runtime",
+      agentTools: true,
+      toolSlots: discoverToolSlots(composition),
+    }).agents;
+
+  const flue = (kind: string) =>
+    emitFlue({
+      spec: Coordinator.spec,
+      model: MODEL,
+      componentName: "Coordinator",
+      componentImport: "../agents/coordinator.tsx",
+      analysis,
+      childProfiles: [{ importPath: `./${kind}.flue.ts`, profileExportName: flueProfileExportName(kind) }],
+      runtimeImport: "./runtime",
+    });
+
+  return {
+    "coordinator.worker.cloudflare.ts": cf(Worker, "Worker", "worker.tsx", withWorker),
+    "coordinator.summarizer.cloudflare.ts": cf(Summarizer, "Summarizer", "summarizer.tsx", withSummarizer),
+    "coordinator.worker.flue.ts": flue("tool-worker"),
+    "coordinator.summarizer.flue.ts": flue("tool-summarizer"),
+  };
+}
+
 export function buildFixtures(): Record<string, string> {
   // Rendering the ROOT means rendering its own tree (its impl) — the same
   // function the generated root class calls via .spec.impl.
@@ -233,6 +280,7 @@ export function buildFixtures(): Record<string, string> {
     }),
     ...buildLayoutFixtures(),
     ...buildSchemaFixtures(),
+    ...buildToolSlotFixtures(),
   };
 }
 

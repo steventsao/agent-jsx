@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import { agentComponent } from "../../src/agent-component.tsx";
+import { agentComponent, type ToolSlotHandle } from "../../src/agent-component.tsx";
 import { useAgentState } from "../../src/state.ts";
 
 /** The serializable INPUT contract — validated at the boundary as `setProps`. */
@@ -17,8 +17,15 @@ export const workerInput = z.object({ query: z.string().min(1) });
 export const workerOutput = z.object({ answer: z.string() });
 
 export interface WorkerProps extends Record<string, unknown> {
-  query: string;
-  onResult: (result: { answer: string }) => void;
+  // Optional at the COMPOSITION site: a normal parent passes them; when this
+  // agent fills a tool slot, the input arrives from the MODEL at call time (the
+  // inputSchema is the real, enforced contract either way).
+  query?: string;
+  onResult?: (result: { answer: string }) => void;
+  /** When this agent FILLS a coordinator's tool slot, the composition binds the
+   *  provider's capability handle here (`<Worker onCall={handleCall} />`); the
+   *  prop key names the model tool. Absent for a normal (non-slot) composition. */
+  onCall?: ToolSlotHandle;
 }
 
 export interface WorkerState extends Record<string, unknown> {
@@ -37,13 +44,13 @@ export const Worker = agentComponent<WorkerProps, WorkerState, { answer: string 
     const { answered } = useAgentState(store);
     return (
       <>
-        {!answered && (
+        {query && !answered && (
           <task
             name={`answer:${query}`}
             run={async () => ({ answer: `re: ${query}` })}
             onDone={async (r) => {
               store.set({ answered: true });
-              await onResult(r as { answer: string });
+              await onResult?.(r as { answer: string });
             }}
           />
         )}

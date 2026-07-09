@@ -6,15 +6,19 @@
  */
 
 import { z } from "zod";
-import { agentComponent } from "../../src/agent-component.tsx";
+import { agentComponent, type ToolSlotHandle } from "../../src/agent-component.tsx";
 import { useAgentState } from "../../src/state.ts";
 
 export const summarizerInput = z.object({ query: z.string().min(1) });
 export const summarizerOutput = z.object({ answer: z.string() });
 
 export interface SummarizerProps extends Record<string, unknown> {
-  query: string;
-  onResult: (result: { answer: string }) => void;
+  // Optional at the composition site (model-provided when filling a tool slot);
+  // the inputSchema is the enforced contract. See worker.tsx.
+  query?: string;
+  onResult?: (result: { answer: string }) => void;
+  /** Slot-fill handle — see worker.tsx. Present only when this fills a tool slot. */
+  onCall?: ToolSlotHandle;
 }
 
 export interface SummarizerState extends Record<string, unknown> {
@@ -33,13 +37,13 @@ export const Summarizer = agentComponent<SummarizerProps, SummarizerState, { ans
     const { answered } = useAgentState(store);
     return (
       <>
-        {!answered && (
+        {query && !answered && (
           <task
             name={`summarize:${query}`}
             run={async () => ({ answer: `summary of ${query}` })}
             onDone={async (r) => {
               store.set({ answered: true });
-              await onResult(r as { answer: string });
+              await onResult?.(r as { answer: string });
             }}
           />
         )}

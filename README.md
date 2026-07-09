@@ -185,6 +185,34 @@ A boundary takes function children. The child agent `emit`s its result; the outp
 
 No output yet → the continuation contributes nothing. Output changes → the grandchildren converge by `name`. Closures never cross the boundary — the continuation re-renders from persisted state, so `bun ex:layout-review` shows the reviewer mount at t=0 and `bbox:r1`/`bbox:r2` mount only after the emit. On the Cloudflare target the child's `emit` compiles to a reserved `__emit` RPC that writes `__outputs` via the durable store; on flue, `spawnPlan(state)` reads the same slot, so the emitted residue appears exactly one workflow round after the fold. `sampleOutput` on the child's spec is what discovery expands the continuation at, so continuation-only kinds still get their classes, bindings, and profiles at compile time.
 
+### Tool slots — the composition site picks the child
+
+A tool-slot provider (`spec.toolSlot`) names no child; its continuation receives a capability handle instead of an output, and binding that handle to a child boundary's prop registers the child as a model tool named after the prop key — so the same `Coordinator`, composed twice, delegates to whichever child's spec satisfies the slot ([examples/tool-slot/](examples/tool-slot/)):
+
+```tsx
+<Coordinator name="coord">{(handleCall) => <Worker onCall={handleCall} />}</Coordinator>
+```
+```ts
+// CoordinatorDurable, agentTools mode — fixtures/coordinator.worker.cloudflare.ts
+getTools() { return { onCall: agentTool(ToolWorkerDurable, {
+  description: Worker.spec.description, inputSchema: Worker.spec.inputSchema }) } }
+// flue — fixtures/coordinator.worker.flue.ts
+subagents: [tool_workerProfile]
+```
+
+```tsx
+<Coordinator name="coord">{(handleCall) => <Summarizer onCall={handleCall} />}</Coordinator>
+```
+```ts
+// CoordinatorDurable — fixtures/coordinator.summarizer.cloudflare.ts
+getTools() { return { onCall: agentTool(ToolSummarizerDurable, {
+  description: Summarizer.spec.description, inputSchema: Summarizer.spec.inputSchema }) } }
+// flue — fixtures/coordinator.summarizer.flue.ts
+subagents: [tool_summarizerProfile]
+```
+
+The `getTools` block targets the agents 0.17 `agentTool` API behind a version gate — the child's `inputSchema`/`description` come from its own `agentComponent` spec (optional zod schemas the boundary also validates in both directions), and it is not run on the 0.8.x reconcile runtime ([docs/agent-tools-investigation.md](docs/agent-tools-investigation.md)).
+
 ### Dynamic fan-out is a `.map`
 
 Where the hierarchy varies with state, the fan-out is ordinary data rendering ([examples/uptime-agent.tsx](examples/uptime-agent.tsx) composing [examples/investigator.tsx](examples/investigator.tsx)):

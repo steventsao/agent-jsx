@@ -48,7 +48,7 @@ export interface AgentHandle {
 export function mountAgent(
   element: ReactNode,
   host: AgentHost,
-  opts: { quiet?: boolean } = {}
+  opts: { quiet?: boolean; expandSamples?: boolean } = {}
 ): AgentHandle {
   const onOps = (ops: HostOp[]) => {
     if (opts.quiet) return;
@@ -65,6 +65,10 @@ export function mountAgent(
   // current flush, expanding the continuation and reconciling its grandchildren.
   let store = readStore(element);
   const ctx: OutputsContext = {
+    // Compile-time sample expansion (off by default). When on, a boundary's
+    // render-prop continuation expands under the React commit path too — used to
+    // prove the walker and React agree on continuation/slot-handle records.
+    expandSamples: opts.expandSamples ?? false,
     get outputs() {
       return (store?.get() as { __outputs?: Record<string, unknown> } | undefined)?.__outputs ?? {};
     },
