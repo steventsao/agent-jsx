@@ -20,7 +20,7 @@
  */
 
 import { renderPromptOrFallback } from "../prompt.ts";
-import { collectPrompt } from "../tree.ts";
+import { collectInfra, collectPrompt } from "../tree.ts";
 import { createStore } from "../store.ts";
 import { evaluateComponent } from "./evaluate.ts";
 import { emitRuntimeFiles } from "./runtime-files.ts";
@@ -212,6 +212,57 @@ export function emitFlue(o: FlueEmitOptions): string {
     () => spec.getPrompt?.(spec.initialState) ?? ""
   );
 
+  // STATIC <tool> records (present at the resting render) → flue tools. This is
+  // the flue analogue of think mode's getTools()[name] = tool(...): the same
+  // <tool> a Think agent registers, exposed to flue's harness via defineTool.
+  // description-only pass-through (the <tool> intrinsic carries no input schema,
+  // and defineTool.input is optional) — see docs/think-target.md. State-gated
+  // (dynamic) tools stay out (flue has no state→render loop), so uptime's
+  // page-oncall is byte-identical (no tools block).
+  const staticTools: { name: string; description: string }[] = [];
+  const seenTools = new Set<string>();
+  for (const root of restingRoots)
+    for (const rec of collectInfra(root))
+      if (rec.kind === "tool" && !seenTools.has(rec.name)) {
+        seenTools.add(rec.name);
+        staticTools.push({ name: rec.name, description: String(rec.config.description ?? "") });
+      }
+  const flueImport = staticTools.length
+    ? `import { defineAgent, defineTool } from "@flue/runtime";`
+    : `import { defineAgent } from "@flue/runtime";`;
+  const toolsBlock = staticTools.length
+    ? `  // Static <tool> records → flue tools (the flue analogue of think mode's
+  // getTools). defineTool.input is omitted (the <tool> intrinsic carries no input
+  // schema — description-only pass-through, see docs/think-target.md); the run
+  // re-renders at rest to invoke the freshest closure (closures never serialize).
+  // A <tool> store.set side effect is not persisted — flue tools are session-
+  // scoped, not agent-state-backed.
+  tools: [
+${staticTools
+        .map(
+          (t) => `    defineTool({
+      name: ${JSON.stringify(t.name)},
+      description: ${JSON.stringify(t.description)},
+      run: async (context) => {
+        const store = createStore<State>(${o.componentName}.spec.initialState as State);
+        const rec = withOutputs({ outputs: {}, setOutput: () => {} }, () =>
+          evaluateTree(${o.componentName}.spec.impl({ ...PROPS, store, emit: () => {} })),
+        )
+          .flatMap((root) => collectInfra(root))
+          .find((r) => r.kind === "tool" && r.name === ${JSON.stringify(t.name)});
+        const input = (context as { input?: Record<string, unknown> }).input ?? {};
+        return String((await rec?.handlers.run?.(input)) ?? "");
+      },
+    }),`
+        )
+        .join("\n")}
+  ],`
+    : `  // No static tools: the component's <tool> is state-gated (e.g. page-oncall
+  // only during an incident). Surface it per-turn via the harness rather than
+  // as an always-on definition tool. flue has no sensor primitive either —
+  // poll sensors belong in a flue workflow (cron) that calls session.prompt
+  // with fresh observations.`;
+
   const dynamicKinds = o.analysis.dynamic.map((r) => `${r.kind}:${r.name}`);
   // STATIC subagent boundaries are declared as native flue `subagents:` on the
   // agent above. The spawn plan is the DYNAMIC residue ONLY, so exclude them by
@@ -240,7 +291,7 @@ export function emitFlue(o: FlueEmitOptions): string {
 // component per turn and pass renderPrompt(...) as the task context instead
 // of baking it here.
 
-import { defineAgent } from "@flue/runtime";
+${flueImport}
 import { evaluateTree } from "${rt}/compile/evaluate.ts";
 import { collectInfra } from "${rt}/tree.ts";
 import { createStore, withOutputs } from "${rt}/store.ts";
@@ -259,11 +310,7 @@ export default defineAgent(() => ({
   model: ${JSON.stringify(o.model)},
   instructions: ${JSON.stringify(instructions)},
 ${subagentsLine}
-  // No static tools: the component's <tool> is state-gated (e.g. page-oncall
-  // only during an incident). Surface it per-turn via the harness rather than
-  // as an always-on definition tool. flue has no sensor primitive either —
-  // poll sensors belong in a flue workflow (cron) that calls session.prompt
-  // with fresh observations.
+${toolsBlock}
 }));
 
 /**
