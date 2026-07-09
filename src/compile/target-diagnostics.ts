@@ -1,12 +1,13 @@
-import { createStore } from "../store.ts";
+import { createStore, withOutputs } from "../store.ts";
 import { collectInfra } from "../tree.ts";
 import { evaluateComponent } from "./evaluate.ts";
+import type { AgentSpec } from "../agent-component.tsx";
 import type { ChildAgentSpec } from "./emit-cloudflare.ts";
 
 export type TargetDiagnosticSeverity = "warning" | "error";
 
 export interface TargetDiagnostic {
-  target: "flue";
+  target: "flue" | "think";
   severity: TargetDiagnosticSeverity;
   code: string;
   message: string;
@@ -70,6 +71,62 @@ export function flueChildTargetDiagnostics(child: ChildAgentSpec): TargetDiagnos
   }
 
   return diagnostics;
+}
+
+/**
+ * THINK-mode diagnostics. A `Think` agent is a model-driven chat turn — it has
+ * getSystemPrompt (the context window) + getTools (child boundaries + <tool>
+ * records) and NO deterministic reconcile loop. So the reconcile-only infra
+ * kinds (<sensor> poll convergence, <schedule> cron rows, <task> run-once) have
+ * no think-mode mapping and are DROPPED with a loud warning — the author should
+ * use reconcile mode (emitCloudflare) for durable-infra convergence, or wire the
+ * schedule by hand on the Think subclass (Think extends Agent, so this.schedule
+ * exists, but the emitter does not converge it). One diagnostic per unsupported
+ * KIND present in the component's own render.
+ */
+const THINK_UNSUPPORTED: Record<string, string> = {
+  sensor: "think-sensor-unsupported",
+  schedule: "think-schedule-unsupported",
+  task: "think-task-unsupported",
+};
+
+export function thinkTargetDiagnostics(spec: AgentSpec): TargetDiagnostic[] {
+  const byKind = new Map<string, string[]>();
+  try {
+    // Sample-output expansion ON so a continuation-gated <task>/<tool> is seen too.
+    const roots = withOutputs({ outputs: {}, setOutput: () => {}, expandSamples: true }, () =>
+      evaluateComponent(spec.impl, {
+        ...(spec.sampleProps ?? {}),
+        store: createStore(spec.initialState),
+        emit: () => {},
+      } as never)
+    );
+    for (const root of roots)
+      for (const rec of collectInfra(root)) {
+        if (!(rec.kind in THINK_UNSUPPORTED)) continue;
+        const list = byKind.get(rec.kind) ?? [];
+        list.push(rec.name);
+        byKind.set(rec.kind, list);
+      }
+  } catch {
+    return [
+      {
+        target: "think",
+        severity: "warning",
+        code: "think-analysis-failed",
+        message: "could not statically inspect the component for think-mode limitations.",
+      },
+    ];
+  }
+
+  return [...byKind.entries()].map(([kind, names]) => ({
+    target: "think" as const,
+    severity: "warning" as const,
+    code: THINK_UNSUPPORTED[kind]!,
+    message:
+      `<${kind}> records [${names.join(", ")}] have no think-mode mapping (a Think agent has no ` +
+      "reconcile loop); they are DROPPED. Use reconcile mode (emitCloudflare) for durable-infra convergence.",
+  }));
 }
 
 export function formatTargetDiagnosticsForComment(diagnostics: TargetDiagnostic[]): string {
