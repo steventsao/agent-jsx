@@ -1,0 +1,28 @@
+// Real worker config for the THINK compat proof. Bindings/migrations mirror the
+// emitter's generated fragment (src/generated/think.wrangler.jsonc). Flags match
+// the cloudflare-agents-playground think test config (known-good for
+// @cloudflare/think + agents under vitest-pool-workers).
+{
+  "name": "agent-jsx-compat-think",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-01-28",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "experimental",
+    "enable_nodejs_tty_module",
+    "enable_nodejs_fs_module",
+    "enable_nodejs_http_modules",
+    "enable_nodejs_perf_hooks_module",
+    "enable_nodejs_v8_module",
+    "enable_nodejs_process_v2"
+  ],
+  "durable_objects": {
+    "bindings": [
+      { "name": "COORDINATOR", "class_name": "CoordinatorDurable" },
+      { "name": "TOOL_WORKER", "class_name": "ToolWorkerDurable" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["CoordinatorDurable", "ToolWorkerDurable"] }
+  ]
+}

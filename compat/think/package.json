@@ -1,0 +1,32 @@
+{
+  "name": "agent-jsx-compat-think",
+  "private": true,
+  "type": "module",
+  "description": "Proves generated THINK-mode classes run on real @cloudflare/think@0.12.1 + agents@0.17.3 (agents/agent-tools) inside workerd (vitest-pool-workers). The 0.8.7 compat packages are UNTOUCHED.",
+  "scripts": {
+    "generate": "bun scripts/generate.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "bun run generate && vitest run"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "^3.0.140",
+    "@cloudflare/think": "0.12.1",
+    "agents": "0.17.3",
+    "ai": "^6.0.138",
+    "react": "^19.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.13.4",
+    "@cloudflare/workers-types": "^4.20260317.1",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "4.1.1",
+    "wrangler": "^4.77.0"
+  },
+  "trustedDependencies": [
+    "@mongodb-js/zstd",
+    "core-js-pure",
+    "node-liblzma"
+  ]
+}
