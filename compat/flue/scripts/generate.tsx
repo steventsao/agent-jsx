@@ -15,6 +15,9 @@ import {
 import { createStore } from "../../../src/state.ts";
 import { Investigator } from "../../../examples/investigator.tsx";
 import { Worker } from "../../../examples/tool-slot/worker.tsx";
+import { Notetaker } from "../../../examples/think/notetaker.tsx";
+import { Researcher } from "../../../examples/think/researcher.tsx";
+import { analyzeAgent } from "../../../src/compile/graph.ts";
 import {
   initialUptimeState,
   UptimeAgent,
@@ -81,6 +84,44 @@ writeFileSync(
   )
 );
 
+// PHASE 3 — the <tool> gap-closer: a ROOT agent (Notetaker) with a STATIC
+// <tool> (saveNote) emits `tools: [defineTool(...)]` on its defineAgent config.
+// Importing the module + calling initialize() runs flue's real defineTool
+// validator (the oracle); the run re-renders the component to dispatch the
+// freshest <tool> closure. Notetaker nests Researcher (its subagents roster).
+copyAgentComponent(
+  new URL("../../../examples/think/notetaker.tsx", import.meta.url),
+  here("src/agents/notetaker.tsx").pathname,
+  "../generated/runtime"
+);
+copyAgentComponent(
+  new URL("../../../examples/think/researcher.tsx", import.meta.url),
+  here("src/agents/researcher.tsx").pathname,
+  "../generated/runtime"
+);
+writeFileSync(
+  here("src/generated/notetaker.flue.ts"),
+  emitFlue({
+    spec: Notetaker.spec,
+    model: "openrouter/google/gemini-3.1-flash-lite-preview",
+    componentName: "Notetaker",
+    componentImport: "../agents/notetaker.tsx",
+    analysis: analyzeAgent({ spec: Notetaker.spec, exportName: "Notetaker", importPath: "../agents/notetaker.tsx" }),
+    childProfiles: [
+      { importPath: "./researcher.flue.ts", profileExportName: flueProfileExportName("researcher") },
+    ],
+    runtimeImport: "./runtime",
+  })
+);
+writeFileSync(
+  here("src/generated/researcher.flue.ts"),
+  emitFlueChild(
+    { spec: Researcher.spec, exportName: "Researcher", importPath: "../agents/researcher.tsx" },
+    400,
+    { runtimeImport: "./runtime" }
+  )
+);
+
 // v0.5: the reactive workflow module — flue's state→render loop. Imports the
 // executor (copied into runtime/ by emitFlue above) and the generated
 // defineAgent (uptime.flue.ts default export) as the workflow agent.
@@ -94,4 +135,6 @@ writeFileSync(
     runtimeImport: "./runtime",
   })
 );
-console.log("generated: src/generated/{uptime,investigator}.flue.ts + uptime.workflow.ts + runtime/");
+console.log(
+  "generated: src/generated/{uptime,investigator,notetaker,researcher}.flue.ts + uptime.workflow.ts + runtime/"
+);
