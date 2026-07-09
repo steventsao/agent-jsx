@@ -11,6 +11,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { analyze } from "../../../src/compile/analyze.ts";
 import { emitCloudflare, type ChildAgentSpec } from "../../../src/compile/emit-cloudflare.ts";
+import { discoverAgents } from "../../../src/compile/graph.ts";
 import { copyAgentComponent } from "../../../src/compile/runtime-files.ts";
 import { createStore } from "../../../src/state.ts";
 import { Investigator } from "../../../examples/investigator.tsx";
@@ -19,6 +20,9 @@ import {
   UptimeAgent,
   type UptimeState,
 } from "../../../examples/uptime-agent.tsx";
+import { ContRoot } from "../../../examples/continuation-min/parent.tsx";
+import { ContEmitter } from "../../../examples/continuation-min/emitter.tsx";
+import { ContFolder } from "../../../examples/continuation-min/folder.tsx";
 
 const SITES = ["https://a.example", "https://b.example", "https://c.example"];
 const incident: UptimeState = {
@@ -61,3 +65,43 @@ const out = emitCloudflare(
 writeFileSync(here("src/generated/uptime.cloudflare.ts"), out.agents);
 writeFileSync(here("src/generated/uptime.wrangler.jsonc"), out.wrangler);
 console.log("generated: src/generated/uptime.cloudflare.ts + runtime/ + wrangler fragment");
+
+// 3. The continuation pair (Phase 0 e2e): the SAME continuation shape as
+//    layout-review but pure-compute, so the whole __emit → __outputs → grandchild
+//    round-trip is deterministic on real workerd. Discover the graph transitively
+//    (root cont-root nests cont-emitter statically + cont-folder via its own
+//    render-prop continuation, expanded at the emitter's sampleOutput). Runtime
+//    is shared with the uptime emit above (runtimeImport "./runtime"), so no
+//    re-copy is needed.
+copyAgentComponent(
+  new URL("../../../examples/continuation-min/parent.tsx", import.meta.url),
+  here("src/agents/parent.tsx").pathname,
+  "../generated/runtime"
+);
+copyAgentComponent(
+  new URL("../../../examples/continuation-min/emitter.tsx", import.meta.url),
+  here("src/agents/emitter.tsx").pathname,
+  "../generated/runtime"
+);
+copyAgentComponent(
+  new URL("../../../examples/continuation-min/folder.tsx", import.meta.url),
+  here("src/agents/folder.tsx").pathname,
+  "../generated/runtime"
+);
+
+const contGraph = discoverAgents(
+  { spec: ContRoot.spec, exportName: "ContRoot", importPath: "../agents/parent.tsx" },
+  [
+    { spec: ContEmitter.spec, exportName: "ContEmitter", importPath: "../agents/emitter.tsx" },
+    { spec: ContFolder.spec, exportName: "ContFolder", importPath: "../agents/folder.tsx" },
+  ]
+);
+const cont = emitCloudflare(
+  { spec: contGraph[0]!.spec, componentName: "ContRoot", componentImport: "../agents/parent.tsx" },
+  contGraph.slice(1).map((n) => ({ spec: n.spec, exportName: n.exportName, importPath: n.importPath })),
+  contGraph[0]!.analysis,
+  { runtimeImport: "./runtime" }
+);
+writeFileSync(here("src/generated/continuation.cloudflare.ts"), cont.agents);
+writeFileSync(here("src/generated/continuation.wrangler.jsonc"), cont.wrangler);
+console.log("generated: src/generated/continuation.cloudflare.ts (cont-root → cont-emitter → cont-folder)");

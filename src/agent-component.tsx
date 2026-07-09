@@ -45,9 +45,17 @@ import { getOutputs } from "./store.ts";
  *  <task> onDone). It routes like a callback into the parent's reserved output
  *  slot, driving the parent's render-prop continuation. Optional in the type
  *  (a root emits to no one, and direct root-render sites omit it) but ALWAYS
- *  provided by a runtime; an emitting child calls `emit?.(output)`. */
+ *  provided by a runtime; an emitting child `await`s `emit?.(output)`.
+ *
+ *  It resolves `void | Promise<void>`: inert in the sim/React path (a synchronous
+ *  store write), but on Cloudflare it is a cross-DO callback RPC that drives the
+ *  PARENT's reconcile (its continuation grandchildren spawn before it resolves).
+ *  So an emitting `<task>` MUST `await` it — an un-awaited emit leaves the RPC
+ *  pending when the child's reconcile resolves and workerd tears the I/O context
+ *  down mid-flight ("Closing rpc while resolve was pending"), exactly the
+ *  await-the-cross-DO-call rule the dispatcher already honors (COMPAT-REPORT #22, #37). */
 export type AgentImpl<P, S extends Record<string, unknown>, O = unknown> = (
-  props: P & { store: AgentStore<S>; emit?: (output: O) => void }
+  props: P & { store: AgentStore<S>; emit?: (output: O) => void | Promise<void> }
 ) => ReactNode;
 
 export interface AgentSpec<P = any, S extends Record<string, unknown> = any, O = unknown> {

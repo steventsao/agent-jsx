@@ -20,10 +20,19 @@
   "durable_objects": {
     "bindings": [
       { "name": "UPTIME", "class_name": "UptimeDurable" },
-      { "name": "INVESTIGATOR", "class_name": "InvestigatorDurable" }
+      { "name": "INVESTIGATOR", "class_name": "InvestigatorDurable" },
+      // continuation e2e (Phase 0): cont-root nests cont-emitter statically and
+      // fans out cont-folder grandchildren via its render-prop continuation.
+      { "name": "CONT_ROOT", "class_name": "ContRootDurable" },
+      { "name": "CONT_EMITTER", "class_name": "ContEmitterDurable" },
+      { "name": "CONT_FOLDER", "class_name": "ContFolderDurable" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["UptimeDurable", "InvestigatorDurable"] }
+    { "tag": "v1", "new_sqlite_classes": ["UptimeDurable", "InvestigatorDurable"] },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["ContRootDurable", "ContEmitterDurable", "ContFolderDurable"]
+    }
   ]
 }
