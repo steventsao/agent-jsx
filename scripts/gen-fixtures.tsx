@@ -33,6 +33,9 @@ import {
 } from "../examples/layout-review/layout-analyst.tsx";
 import { LayoutReviewer, type ReviewPage } from "../examples/layout-review/layout-reviewer.tsx";
 import { BboxExtractor } from "../examples/pdf/bbox-extractor.tsx";
+import { ResearchDesk, initialResearchDeskState } from "../examples/tool-slot/research-desk.tsx";
+import { Worker } from "../examples/tool-slot/worker.tsx";
+import { Summarizer } from "../examples/tool-slot/summarizer.tsx";
 
 export const SITES = ["https://a.example", "https://b.example", "https://c.example"];
 const MODEL = "openrouter/google/gemini-3.1-flash-lite-preview";
@@ -125,6 +128,65 @@ export function buildLayoutFixtures(): Record<string, string> {
   };
 }
 
+/**
+ * The SCHEMA-DRIVEN family: a root (research-desk) composes two schema'd children
+ * (tool-worker, tool-summarizer) as normal boundaries. Emitted so the schema
+ * contract is visible in committed fixtures — the cloudflare child classes carry
+ * `@boundarySchema` docs, and the flue profiles carry `description`.
+ */
+export function buildSchemaFixtures(): Record<string, string> {
+  const rootModule: AgentModule = {
+    spec: ResearchDesk.spec,
+    exportName: "ResearchDesk",
+    importPath: "../agents/research-desk.tsx",
+    // The children are state-gated on a query; the second sample (query set)
+    // surfaces them for discovery with a schema-valid query.
+    samples: [{ state: initialResearchDeskState }, { state: { query: "revenue", results: {} } }],
+  };
+  const workerModule: AgentModule = { spec: Worker.spec, exportName: "Worker", importPath: "../agents/worker.tsx" };
+  const summarizerModule: AgentModule = {
+    spec: Summarizer.spec,
+    exportName: "Summarizer",
+    importPath: "../agents/summarizer.tsx",
+  };
+
+  const graph = discoverAgents(rootModule, [workerModule, summarizerModule]);
+  const rootNode = graph[0]!;
+  const profileImports = (kinds: string[]) =>
+    kinds.map((kind) => ({ importPath: `./${kind}.flue.ts`, profileExportName: flueProfileExportName(kind) }));
+
+  const cf = emitCloudflare(
+    { spec: rootNode.spec, componentName: rootNode.exportName, componentImport: rootNode.importPath },
+    graph.slice(1).map((n) => ({ spec: n.spec, exportName: n.exportName, importPath: n.importPath })),
+    rootNode.analysis,
+    { runtimeImport: "./runtime" }
+  );
+
+  return {
+    "research-desk.cloudflare.ts": cf.agents,
+    "research-desk.wrangler.jsonc": cf.wrangler,
+    "research-desk.flue.ts": emitFlue({
+      spec: rootNode.spec,
+      model: MODEL,
+      componentName: rootNode.exportName,
+      componentImport: rootNode.importPath,
+      analysis: rootNode.analysis,
+      childProfiles: profileImports(rootNode.directChildren),
+      runtimeImport: "./runtime",
+    }),
+    "tool-worker.flue.ts": emitFlueChild(
+      { spec: Worker.spec, exportName: "Worker", importPath: "../agents/worker.tsx" },
+      400,
+      { runtimeImport: "./runtime" }
+    ),
+    "tool-summarizer.flue.ts": emitFlueChild(
+      { spec: Summarizer.spec, exportName: "Summarizer", importPath: "../agents/summarizer.tsx" },
+      400,
+      { runtimeImport: "./runtime" }
+    ),
+  };
+}
+
 export function buildFixtures(): Record<string, string> {
   // Rendering the ROOT means rendering its own tree (its impl) — the same
   // function the generated root class calls via .spec.impl.
@@ -170,6 +232,7 @@ export function buildFixtures(): Record<string, string> {
       runtimeImport: "./runtime",
     }),
     ...buildLayoutFixtures(),
+    ...buildSchemaFixtures(),
   };
 }
 

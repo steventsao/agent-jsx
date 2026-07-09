@@ -14,6 +14,7 @@ import {
 } from "../../../src/compile/emit-flue.ts";
 import { createStore } from "../../../src/state.ts";
 import { Investigator } from "../../../examples/investigator.tsx";
+import { Worker } from "../../../examples/tool-slot/worker.tsx";
 import {
   initialUptimeState,
   UptimeAgent,
@@ -63,6 +64,18 @@ writeFileSync(
   here("src/generated/investigator.flue.ts"),
   emitFlueChild(
     { spec: Investigator.spec, exportName: "Investigator", importPath: "../agents/investigator.tsx" },
+    400,
+    { runtimeImport: "./runtime" }
+  )
+);
+
+// A SCHEMA-DRIVEN child profile: proves the emitted `description` (from the
+// spec) survives flue's real defineAgentProfile validation. A leaf profile
+// imports no runtime/zod, so no extra deps in this package.
+writeFileSync(
+  here("src/generated/tool-worker.flue.ts"),
+  emitFlueChild(
+    { spec: Worker.spec, exportName: "Worker", importPath: "../agents/worker.tsx" },
     400,
     { runtimeImport: "./runtime" }
   )

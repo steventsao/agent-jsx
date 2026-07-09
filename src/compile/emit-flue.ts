@@ -84,6 +84,13 @@ export function emitFlueChild(child: ChildAgentSpec, promptBudget = 400, opts: F
   const { spec } = child;
   const rt = opts.runtimeImport ?? "../../src";
   const profileExport = flueProfileExportName(spec.agentName);
+  // Profile description pass-through: `defineAgentProfile` accepts `description`
+  // (flue AgentProfile), so the child's spec.description travels into the flue
+  // delegation roster — the contract a parent's `subagents:` exposes to the
+  // model. Empty when absent, so schemaless profiles stay byte-identical.
+  const descriptionLine = spec.description
+    ? `  description: ${JSON.stringify(spec.description)},\n`
+    : "";
   const diagnostics = formatTargetDiagnosticsForComment(flueChildTargetDiagnostics(child));
   const roots = evaluateComponent(spec.impl, {
     ...(spec.sampleProps ?? {}),
@@ -110,7 +117,7 @@ import { defineAgentProfile } from "@flue/runtime";
 
 export const ${profileExport} = defineAgentProfile({
   name: ${JSON.stringify(spec.agentName)},
-  instructions: ${JSON.stringify(instructions)},
+${descriptionLine}  instructions: ${JSON.stringify(instructions)},
   // Parent props arrive as the delegated task input; the child's onResult
   // callback is realized as the task RETURN value (flue's session.task).
 });
@@ -180,7 +187,7 @@ ${runtimeImports}${childImports}
 
 export const ${profileExport} = defineAgentProfile({
   name: ${JSON.stringify(spec.agentName)},
-  instructions: ${JSON.stringify(instructions)},
+${descriptionLine}  instructions: ${JSON.stringify(instructions)},
   // Nested subagent profiles — this level's static hierarchy as flue's native
   // \`subagents:\` array (defineAgentProfile carrying subagents, exactly the
   // sketch). session.task(..., { agent }) resolves them.
