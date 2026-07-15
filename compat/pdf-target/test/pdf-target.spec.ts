@@ -14,7 +14,7 @@
  *      the same number of children.
  */
 
-import { env, runInDurableObject } from "cloudflare:test";
+import { env, runInDurableObject as runInDurableObjectRaw } from "cloudflare:test";
 import { getAgentByName } from "agents";
 import { describe, expect, it } from "vitest";
 import { SAMPLE_PDF_B64 } from "../../../fixtures/pdf/sample-pdf.ts";
@@ -37,6 +37,23 @@ declare module "cloudflare:test" {
     BBOX_EXTRACTOR: DurableObjectNamespace;
   }
 }
+
+declare global {
+  namespace Cloudflare {
+    interface Env {
+      ORCHESTRATOR: DurableObjectNamespace;
+      BBOX_EXTRACTOR: DurableObjectNamespace;
+    }
+  }
+}
+
+const runInDurableObject = <TAgent, TResult>(
+  stub: DurableObjectStub,
+  callback: (agent: TAgent) => TResult | Promise<TResult>,
+) =>
+  runInDurableObjectRaw(stub, (instance) =>
+    callback(instance as unknown as TAgent),
+  );
 
 const orchestrator = async () =>
   (await getAgentByName(env.ORCHESTRATOR as never, "pdf-main")) as never as DurableObjectStub;
