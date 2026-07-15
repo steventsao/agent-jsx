@@ -53,13 +53,19 @@ getter and `@callable` method; `result(handleTurn)` explicitly grants that
 result sink to each player. Nesting alone grants nothing.
 
 The compiler generates class-to-boundary companions, infers representative
-player props from this composition, and emits the Flue binding table, player
-profiles, and reactive workflow:
+player props from this composition, and emits the Flue binding table plus a
+Cloudflare Think target. Think's generated `runTurnWithTrace(input, props)`
+bridge runs a durable chat turn and returns its public text/reasoning stream;
+the chess Worker stores bounded public reasoning—or the move note fallback—as
+each move's thought bubble.
 
 ```sh
 bun run chess:generate
 ```
 
-The deployable UI + Durable Object Worker is in `compat/chess`. Provider keys
-exist only as Worker secrets. The browser sends a separate demo access token
-and never receives OpenRouter or Gemini credentials.
+The deployable UI + Durable Object Worker is in `compat/chess`. Models are the
+explicit strings in the player classes. Its `modelResolver` target option maps
+the explicit `openrouter/` ids to an authenticated AI SDK provider; the compiler
+does not infer a provider from an agent/class name. The browser sends only a
+demo access token and never receives model credentials or Durable Object
+bindings.

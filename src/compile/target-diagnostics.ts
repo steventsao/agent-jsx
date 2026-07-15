@@ -90,13 +90,16 @@ const THINK_UNSUPPORTED: Record<string, string> = {
   task: "think-task-unsupported",
 };
 
-export function thinkTargetDiagnostics(spec: AnyAgentSpec): TargetDiagnostic[] {
+export function thinkTargetDiagnostics(
+  spec: AnyAgentSpec,
+  sampleProps?: Record<string, unknown>,
+): TargetDiagnostic[] {
   const byKind = new Map<string, string[]>();
   try {
     // Sample-output expansion ON so a continuation-gated <task>/<tool> is seen too.
     const roots = withOutputs({ outputs: {}, setOutput: () => {}, expandSamples: true }, () =>
       evaluateComponent(spec.impl, {
-        ...(spec.sampleProps ?? {}),
+        ...(sampleProps ?? spec.sampleProps ?? {}),
         store: createStore(spec.initialState),
         emit: () => {},
       } as never)

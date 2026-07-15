@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Agent JSX core API reference.">
+  <title>Agent API · Agent JSX</title>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="../">Agent JSX</a>
+    <nav aria-label="Primary">
+      <a href="../#guide">Guide</a>
+      <a aria-current="page" href="./">API</a>
+      <a href="https://github.com/steventsao/agent-jsx">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="docs-shell">
+    <aside class="sidebar" aria-label="API sections">
+      <p class="side-label">Authoring</p>
+      <a href="#agent">Agent</a>
+      <a href="#identity">Identity and model</a>
+      <a href="#state">State</a>
+      <a href="#callable">callable</a>
+      <a href="#prompt">getPrompt</a>
+      <a href="#tools">getTools</a>
+      <a href="#skills">getSkills</a>
+      <a href="#render">render</a>
+      <p class="side-label">Composition</p>
+      <a href="#compile">compileAgentClass</a>
+      <a href="#compose">composeAgent</a>
+      <a href="#result">result</a>
+      <p class="side-label">Targets</p>
+      <a href="#generated">Generated runtime</a>
+    </aside>
+
+    <main class="docs">
+      <p class="eyebrow">Reference</p>
+      <h1>Agent API</h1>
+      <p class="lede small">The authored API is exported from <code>agent-jsx/agent</code>. Agent files never declare whether they are a parent or child; composition supplies that relationship.</p>
+
+      <section id="agent" class="api-section">
+        <h2><code>Agent&lt;S, P&gt;</code></h2>
+        <pre><code>abstract class Agent&lt;
+  S extends Record&lt;string, unknown&gt;,
+  P extends object = {}
+&gt;</code></pre>
+        <p>A hierarchy-free agent definition. <code>S</code> is durable state and <code>P</code> is the explicit input contract supplied by a composition boundary.</p>
+        <div class="field-table">
+          <div class="field-row header"><span>Member</span><span>Meaning</span></div>
+          <div class="field-row"><code>initialState</code><span>Required initial durable state.</span></div>
+          <div class="field-row"><code>model</code><span>Required explicit provider/model identifier.</span></div>
+          <div class="field-row"><code>description?</code><span>Human-readable purpose used by target registries.</span></div>
+          <div class="field-row"><code>displayName?</code><span>UI label for generated agent/tool surfaces.</span></div>
+          <div class="field-row"><code>props</code><span>Current typed composition input.</span></div>
+        </div>
+      </section>
+
+      <section id="identity" class="api-section">
+        <h2>Identity and model</h2>
+        <pre><code>static agentName = "policy-reviewer";
+model = "openrouter/anthropic/claude-sonnet-4";</code></pre>
+        <p>Both values are authored policy. The compiler does not infer provider, model, role, or hierarchy from class names, filenames, or export names.</p>
+      </section>
+
+      <section id="state" class="api-section">
+        <h2><code>state</code> and <code>setState(...)</code></h2>
+        <pre><code>readonly state: S;
+setState(next: S | ((state: S) =&gt; S)): void;</code></pre>
+        <p>Read current state and replace it with a value or functional update. Generated Cloudflare targets bridge this operation to Durable Object state; local compilation uses the same store contract.</p>
+      </section>
+
+      <section id="callable" class="api-section">
+        <h2><code>@callable()</code></h2>
+        <pre><code>@callable()
+approve(input: Approval): Result {
+  this.setState(state =&gt; applyApproval(state, input));
+  return { accepted: true };
+}</code></pre>
+        <p>Marks a method as part of the agent’s explicit public capability surface. Code generation creates the target-specific proxy; undecorated methods remain internal.</p>
+      </section>
+
+      <section id="prompt" class="api-section">
+        <h2><code>getPrompt()</code></h2>
+        <pre><code>getPrompt() {
+  return (
+    &lt;prompt&gt;
+      &lt;sys p={10}&gt;Review the supplied policy.&lt;/sys&gt;
+      &lt;msg p={8}&gt;{this.props.policy}&lt;/msg&gt;
+    &lt;/prompt&gt;
+  );
+}</code></pre>
+        <p>Returns plain text or prompt JSX. Prompt blocks are rendered under a priority budget. Cloudflare Think maps this to <code>getSystemPrompt()</code>; Flue maps it to instructions.</p>
+      </section>
+
+      <section id="tools" class="api-section">
+        <h2><code>getTools()</code></h2>
+        <pre><code>getTools() {
+  return {
+    lookup: {
+      description: "Read one policy by id.",
+      execute: ({ id }) =&gt; readPolicy(id),
+    },
+  };
+}</code></pre>
+        <p>Returns an AI SDK-style tool object or declarative <code>&lt;tool&gt;</code> JSX. The compiler lowers the definition into the selected target’s native tool representation.</p>
+      </section>
+
+      <section id="skills" class="api-section">
+        <h2><code>getSkills()</code></h2>
+        <pre><code>getSkills() {
+  return [releaseNotesSkill, incidentResponseSkill];
+}</code></pre>
+        <p>Returns opaque skill sources owned by the agent. Targets that support skills retain the references without turning them into hierarchy.</p>
+      </section>
+
+      <section id="render" class="api-section">
+        <h2><code>render()</code></h2>
+        <pre><code>render() {
+  return &lt;AgentStatus state={this.state} /&gt;;
+}</code></pre>
+        <p>Optional UI projection only. The compiler never treats <code>render()</code> as prompt, tools, control flow, or agent hierarchy.</p>
+      </section>
+
+      <section id="compile" class="api-section">
+        <h2><code>compileAgentClass(...)</code></h2>
+        <pre><code>const Reviewer = compileAgentClass(PolicyReviewer);</code></pre>
+        <p>Lowers one authored class into a typed boundary component. Most projects consume generated companion modules and do not call this primitive by hand.</p>
+      </section>
+
+      <section id="compose" class="api-section">
+        <h2><code>composeAgent(...)</code></h2>
+        <pre><code>composeAgent(
+  &lt;Coordinator name="main"&gt;
+    {({ task, accept }) =&gt; (
+      &lt;Worker task={task} onResult={result(accept)} /&gt;
+    )}
+  &lt;/Coordinator&gt;
+);</code></pre>
+        <p>Creates a root composition. The function child receives only the root’s getters and callable references. Nested boundaries define runtime hierarchy.</p>
+      </section>
+
+      <section id="result" class="api-section">
+        <h2><code>result(callable)</code></h2>
+        <pre><code>&lt;Worker onResult={result(accept)} /&gt;</code></pre>
+        <p>Explicitly grants a child the authority to return its delegated result to a parent callable. This is a visible capability binding, not a name-based convention.</p>
+      </section>
+
+      <section id="generated" class="api-section">
+        <h2>Generated runtime</h2>
+        <p>Target plumbing is intentionally absent from the authored API:</p>
+        <div class="field-table">
+          <div class="field-row header"><span>Target</span><span>Compiler output</span></div>
+          <div class="field-row"><strong>Agents</strong><span>Durable classes, state bridges, callable RPC, child props, callbacks, bindings, and migrations.</span></div>
+          <div class="field-row"><strong>Think</strong><span><code>getModel</code>, optional deployment <code>modelResolver</code>, <code>getSystemPrompt</code>, native tools, durable programmatic turns, and text/reasoning traces.</span></div>
+          <div class="field-row"><strong>Flue</strong><span>Profiles, instructions, skills, tools, subagent lists, and workflow tasks.</span></div>
+        </div>
+        <div class="note"><strong>Provider boundary:</strong> Model ids stay explicit in agent classes. A Think target may import a deployment-owned <code>modelResolver(env, id)</code> for SDK packages and secrets; neither agent names nor hierarchy select a provider.</div>
+        <div class="note"><strong>Reasoning UI:</strong> Think’s model-supplied reasoning parts can be returned by the generated <code>runTurnWithTrace</code> bridge for progress indicators or thought bubbles. Authors do not implement stream callbacks manually.</div>
+      </section>
+    </main>
+
+    <aside class="toc" aria-label="On this page">
+      <p class="side-label">On this page</p>
+      <a href="#agent">Agent</a>
+      <a href="#state">State</a>
+      <a href="#callable">callable</a>
+      <a href="#prompt">Prompt</a>
+      <a href="#tools">Tools</a>
+      <a href="#compose">Composition</a>
+      <a href="#generated">Generated runtime</a>
+    </aside>
+  </div>
+</body>
+</html>

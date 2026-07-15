@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { emitAgentModule } from "../../src/compile/emit-agent-module.ts";
+import { emitThink } from "../../src/compile/emit-think.ts";
 import { discoverAgents, type AgentModule } from "../../src/compile/graph.ts";
 import {
   emitFlue,
@@ -93,4 +94,22 @@ for (const child of graph.slice(1)) {
   );
 }
 
-console.log(`generated 3 agent boundary companions + ${graph.length + 1} chess Flue modules`);
+const think = emitThink(
+  {
+    spec: rootNode.spec,
+    componentName: rootNode.exportName,
+    componentImport: rootNode.importPath,
+  },
+  graph.slice(1).map((child) => ({
+    spec: child.spec,
+    exportName: child.exportName,
+    importPath: child.importPath,
+    sampleProps: child.samples?.[0]?.props,
+  })),
+  rootNode.analysis,
+  { runtimeImport: "./runtime" },
+);
+write("chess-match.think.ts", think.agents);
+write("chess-match.think.wrangler.jsonc", think.wrangler);
+
+console.log(`generated 3 agent boundary companions + ${graph.length + 1} chess Flue modules + Think target`);

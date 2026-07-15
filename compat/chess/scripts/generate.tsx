@@ -1,10 +1,15 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { emitAgentModule } from "../../../src/compile/emit-agent-module.ts";
+import { emitThink } from "../../../src/compile/emit-think.ts";
+import { discoverAgents, type AgentModule } from "../../../src/compile/graph.ts";
 import { copyAgentComponent, emitRuntimeFiles } from "../../../src/compile/runtime-files.ts";
+import { ChessMatch, initialChessState, stateAfterMoves } from "../../../examples/chess/match.tsx";
+import { GeminiAgent, OpenAIAgent } from "../../../examples/chess/players.tsx";
 
 const src = new URL("../src/", import.meta.url);
 const agents = new URL("./agents/", src);
 const generatedAgents = new URL("./generated/", agents);
+const generated = new URL("./generated/", src);
 const runtime = new URL("./generated/runtime/", src);
 
 mkdirSync(agents, { recursive: true });
@@ -55,4 +60,39 @@ writeFileSync(
   }),
 );
 
-console.log("generated react-free chess agents + boundary companions + runtime");
+const root: AgentModule = {
+  spec: ChessMatch.spec,
+  exportName: "ChessMatch",
+  importPath: "../agents/match.tsx",
+  samples: [{ state: initialChessState }, { state: stateAfterMoves(["e2e4"]) }],
+};
+const graph = discoverAgents(root, [
+  { spec: OpenAIAgent.spec, exportName: "OpenAIAgent", importPath: "../agents/players.tsx" },
+  { spec: GeminiAgent.spec, exportName: "GeminiAgent", importPath: "../agents/players.tsx" },
+]);
+const rootNode = graph[0]!;
+const think = emitThink(
+  {
+    spec: rootNode.spec,
+    componentName: rootNode.exportName,
+    componentImport: rootNode.importPath,
+  },
+  graph.slice(1).map((child) => ({
+    spec: child.spec,
+    exportName: child.exportName,
+    importPath: child.importPath,
+    sampleProps: child.samples?.[0]?.props,
+  })),
+  rootNode.analysis,
+  {
+    runtimeImport: "./runtime",
+    modelResolver: {
+      importPath: "../model-runtime.ts",
+      exportName: "resolveChessModel",
+    },
+  },
+);
+writeFileSync(new URL("think.cloudflare.ts", generated), think.agents);
+writeFileSync(new URL("think.wrangler.jsonc", generated), think.wrangler);
+
+console.log("generated react-free chess agents + boundary companions + Think target + runtime");

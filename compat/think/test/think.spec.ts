@@ -25,6 +25,10 @@ type ThinkAgent = {
   state: Record<string, unknown>;
   getSystemPrompt(): string;
   getTools(): Record<string, { description?: string; execute?: unknown }>;
+  runTurnWithTrace(
+    input: string,
+    props?: Record<string, unknown>,
+  ): Promise<{ requestId: string; text: string; reasoning: string }>;
 };
 
 declare module "cloudflare:test" {
@@ -135,6 +139,38 @@ function parentToolCallingModel(): LanguageModel {
   } as LanguageModel;
 }
 
+function reasoningModel(): LanguageModel {
+  return {
+    specificationVersion: "v3",
+    provider: "test",
+    modelId: "reasoning-player",
+    supportedUrls: {},
+    doGenerate() {
+      throw new Error("doGenerate is not used by Think's streaming turn");
+    },
+    async doStream() {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "stream-start", warnings: [] });
+          controller.enqueue({ type: "reasoning-start", id: "thought" });
+          controller.enqueue({ type: "reasoning-delta", id: "thought", delta: "Control the center." });
+          controller.enqueue({ type: "reasoning-end", id: "thought" });
+          controller.enqueue({ type: "text-start", id: "move" });
+          controller.enqueue({ type: "text-delta", id: "move", delta: '{"move":"e2e4","note":"central space"}' });
+          controller.enqueue({ type: "text-end", id: "move" });
+          controller.enqueue({
+            type: "finish",
+            finishReason: "stop",
+            usage: { inputTokens: 4, outputTokens: 8 },
+          });
+          controller.close();
+        },
+      });
+      return { stream };
+    },
+  } as LanguageModel;
+}
+
 describe("generated THINK classes on real @cloudflare/think + agents/agent-tools", () => {
   it("boots both Think subclasses as durable objects", async () => {
     // Reachable stub via getAgentByName (the production path) + an in-DO read =
@@ -184,6 +220,18 @@ describe("generated THINK classes on real @cloudflare/think + agents/agent-tools
       (instance) => Object.keys((instance as unknown as ThinkAgent).getTools()),
     );
     expect(keys).toEqual([]);
+  });
+
+  it("collects Think reasoning and text through the generated turn bridge", async () => {
+    const trace = await runInDurableObject(await worker(), async (instance) => {
+      const agent = instance as unknown as ThinkAgent & { getModel: () => LanguageModel };
+      agent.getModel = reasoningModel;
+      return await agent.runTurnWithTrace("Play one move", { query: "center" });
+    });
+
+    expect(trace.requestId).toBeTruthy();
+    expect(trace.reasoning).toBe("Control the center.");
+    expect(trace.text).toBe('{"move":"e2e4","note":"central space"}');
   });
 
   it("executes the generated native agentTool and returns schema-validated child output", async () => {

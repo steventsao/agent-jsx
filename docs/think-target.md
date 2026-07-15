@@ -19,8 +19,31 @@ component's context window is the system prompt, every child boundary is an
 | `<sensor>` / `<schedule>` | converged durable rows (`this.schedule`) | **UNSUPPORTED** — loud diagnostic | not emitted (belongs in a flue cron workflow) |
 | `<task>` (one-shot) | run-once-per-name, guarded in state | **UNSUPPORTED** — the model does the work via tools | not emitted (delegated task result) |
 | the execution loop | the reconcile drain (evaluate→diff→apply) | Think's `onChatMessage` agentic turn | the harness + `session.prompt`/`session.task` |
-| model | n/a (deterministic) | `getModel()` — consumer override | `model: "<provider>/<model>"` |
+| model | n/a (deterministic) | generated `getModel()` from the explicit class model | `model: "<provider>/<model>"` |
+| public reasoning stream | n/a | generated `runTurnWithTrace()` returns text + reasoning | target-defined |
 | reasoning effort | n/a | per-model | `thinkingLevel: off…xhigh` |
+
+### Authored model ids, deployment-owned providers
+
+`getModel()` is generated from the class's explicit `model` value; the emitter
+never infers a provider from a class, export, filename, or agent name. When a
+provider needs an SDK package or secret, pass a target adapter:
+
+```ts
+emitThink(root, children, analysis, {
+  modelResolver: {
+    importPath: "../model-runtime.ts",
+    exportName: "resolveDeploymentModel",
+  },
+});
+```
+
+The generated method becomes
+`resolveDeploymentModel(this.env, Agent.spec.model)`. For example, the chess
+deployment maps its explicit `openrouter/` ids to
+`@openrouter/ai-sdk-provider` with `OPENROUTER_API_KEY`; ids that need no custom
+credentials can remain plain strings for Think's built-in `AI` binding. This is
+runtime adaptation, not model or hierarchy inference.
 
 **What is unsupported, per mode, and why.** think mode has no reconcile loop, so
 `<sensor>`/`<schedule>`/`<task>` (durable-infra convergence, reconcile's job) do
@@ -115,7 +138,7 @@ import { agentTool } from "agents/agent-tools";
 import type { LanguageModel, ToolSet } from "ai";
 
 export class CoordinatorDurable extends ThinkAgentBase<CoordinatorState> {
-  // getModel() inherits Think's throwing default — the consumer overrides it.
+  getModel() { return Coordinator.spec.model; } // when explicitly authored
   getSystemPrompt(): string { /* Coordinator's <prompt> rendered over this.state */ }
   getTools(): ToolSet {
     return {

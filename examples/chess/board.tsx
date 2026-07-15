@@ -12,6 +12,8 @@ export interface ChessMoveRecord {
   uci: string;
   san: string;
   note: string;
+  /** Public model-supplied reasoning summary shown as the move's thought bubble. */
+  thought: string;
 }
 
 export interface ChessState extends Record<string, unknown> {
@@ -34,6 +36,7 @@ export interface ChessTurn extends Record<string, unknown> {
 export interface ChessDecision extends Record<string, unknown> {
   move: string;
   note?: string;
+  thought?: string;
 }
 
 const START = new Chess();
@@ -121,6 +124,7 @@ export function reduceChessTurn(state: ChessState, value: unknown): ChessState {
       uci: candidate,
       san: move.san,
       note: typeof decision.note === "string" ? decision.note : "",
+      thought: typeof decision.thought === "string" ? decision.thought : "",
     },
   ];
 
@@ -144,7 +148,7 @@ export function applyChessTurn(store: AgentStore<ChessState>, value: unknown): v
 
 export function stateAfterMoves(moves: string[], maxPlies = 80): ChessState {
   let state: ChessState = { ...initialChessState, history: [], maxPlies };
-  for (const move of moves) state = reduceChessTurn(state, { move, note: "fixture" });
+  for (const move of moves) state = reduceChessTurn(state, { move, note: "fixture", thought: "fixture plan" });
   return state;
 }
 

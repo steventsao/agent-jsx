@@ -96,7 +96,11 @@ describe("chess reactive execution", () => {
           calls.length % 2 === 0 ? OpenAIAgent : GeminiAgent,
         );
         calls.push(descriptor.agent);
-        return JSON.stringify({ move: script[calls.length - 1], note: "test move" });
+        return JSON.stringify({
+          move: script[calls.length - 1],
+          note: "test move",
+          thought: `plan ${calls.length}`,
+        });
       },
     });
 
@@ -108,6 +112,12 @@ describe("chess reactive execution", () => {
     ]);
     expect(result.delegated).toEqual(["white:0", "black:1", "white:2", "black:3"]);
     expect(result.state.history.map((move) => move.uci)).toEqual(script);
+    expect(result.state.history.map((move) => move.thought)).toEqual([
+      "plan 1",
+      "plan 2",
+      "plan 3",
+      "plan 4",
+    ]);
     expect(result.state.status).toBe("max-plies");
   });
 
@@ -116,11 +126,12 @@ describe("chess reactive execution", () => {
       component: ChessMatch.spec.impl,
       props: {},
       initialState: initialChessState,
-      delegate: () => ({ move: "e2e4", note: "claims the center" }),
+      delegate: () => ({ move: "e2e4", note: "claims the center", thought: "Open lines for both bishops." }),
     });
 
     expect(first.descriptor).toMatchObject({ stableId: "white:0", agent: "openai-chess-player" });
     expect(first.state.history.map((move) => move.uci)).toEqual(["e2e4"]);
+    expect(first.state.history[0]?.thought).toBe("Open lines for both bishops.");
 
     const second = await runReactiveStep({
       component: ChessMatch.spec.impl,
@@ -199,7 +210,7 @@ describe("chess Flue target", () => {
     expect(openai).toContain('model: "openrouter/openai/gpt-5-mini"');
     expect(openai).toContain("Return one legal move");
     expect(gemini).toContain('name: "gemini-chess-player"');
-    expect(gemini).toContain('model: "google/gemini-2.5-flash"');
+    expect(gemini).toContain('model: "openrouter/google/gemini-2.5-flash"');
     expect(gemini).toContain("Return one legal move");
   });
 

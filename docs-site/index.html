@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Agent JSX: hierarchy-free agent classes composed explicitly with JSX and compiled to durable runtimes.">
+  <title>Agent JSX</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="./">Agent JSX</a>
+    <nav aria-label="Primary">
+      <a href="./#guide">Guide</a>
+      <a href="./api/">API</a>
+      <a href="https://github.com/steventsao/agent-jsx">GitHub</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">One authored model · multiple durable targets</p>
+      <h1>Write agents normally.<br>Compose the hierarchy once.</h1>
+      <p class="lede">Agent files own state, prompts, tools, skills, and callable methods. JSX owns parent/child relationships and explicit authority. The compiler owns Durable Object classes, RPC bindings, migrations, Think turns, and Flue profiles.</p>
+      <div class="actions">
+        <a class="button primary" href="./api/">Read the API</a>
+        <a class="button" href="https://github.com/steventsao/agent-jsx/tree/main/examples/chess">Chess example</a>
+      </div>
+    </section>
+
+    <section class="code-pair" id="guide" aria-label="Author and compose example">
+      <article>
+        <div class="code-label">agents/chess-match.agent.tsx</div>
+        <pre><code>class ChessMatch extends Agent&lt;ChessState&gt; {
+  static agentName = "chess-match";
+  model = "openrouter/openai/gpt-5-mini";
+  initialState = initialChessState;
+
+  get turn() {
+    return turnFor(this.state);
+  }
+
+  @callable()
+  handleTurn(decision: ChessDecision) {
+    this.setState(state =&gt;
+      reduceChessTurn(state, decision)
+    );
+  }
+}</code></pre>
+      </article>
+      <article>
+        <div class="code-label">match.tsx</div>
+        <pre><code>composeAgent(
+  &lt;ChessMatch name="match"&gt;
+    {({ turn, handleTurn }) =&gt; turn &amp;&amp; (
+      &lt;Board turn={turn}&gt;
+        &lt;Player
+          agentClass={OpenAIPlayer}
+          turn={turn}
+          onTurn={result(handleTurn)}
+        /&gt;
+      &lt;/Board&gt;
+    )}
+  &lt;/ChessMatch&gt;
+);</code></pre>
+      </article>
+    </section>
+
+    <section class="section">
+      <div class="section-heading">
+        <p class="eyebrow">Core primitives</p>
+        <h2>A small authored surface</h2>
+      </div>
+      <div class="card-grid">
+        <a class="card" href="./api/#agent"><code>Agent&lt;S, P&gt;</code><span>Stateful, hierarchy-free agent definition.</span></a>
+        <a class="card" href="./api/#state"><code>state / setState</code><span>Durable state with ordinary update semantics.</span></a>
+        <a class="card" href="./api/#callable"><code>@callable()</code><span>Explicit public method surface.</span></a>
+        <a class="card" href="./api/#prompt"><code>getPrompt()</code><span>Plain text or priority-aware prompt JSX.</span></a>
+        <a class="card" href="./api/#tools"><code>getTools()</code><span>Plain AI SDK tools or declarative tool JSX.</span></a>
+        <a class="card" href="./api/#compose"><code>composeAgent()</code><span>Hierarchy and authority live at the call site.</span></a>
+      </div>
+    </section>
+
+    <section class="section targets">
+      <div class="section-heading">
+        <p class="eyebrow">Compiler targets</p>
+        <h2>Runtime glue is derived</h2>
+      </div>
+      <div class="target-table">
+        <table>
+          <thead><tr><th scope="col">Target</th><th scope="col">Generated mapping</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Cloudflare Agents</th><td>Durable classes, callable proxies, props, callback RPC, and migrations.</td></tr>
+            <tr><th scope="row">Cloudflare Think</th><td>Models, system prompts, tools, durable turns, and reasoning traces for progress UI.</td></tr>
+            <tr><th scope="row">Flue</th><td>Agent profiles, instructions, tools, subagent rosters, and workflow delegation.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <footer>Agent JSX is experimental and Apache-2.0 licensed.</footer>
+</body>
+</html>

@@ -1,12 +1,37 @@
 import { DurableObject } from "cloudflare:workers";
+import { getAgentByName } from "agents";
 import { ChessMatch, initialChessState, type ChessState } from "./agents/match.tsx";
 import { runReactiveStep } from "./generated/runtime/workflow-executor.ts";
-import { chooseMove, isChessAgentClass, type ChessTurnInput, type ModelEnv } from "./providers.ts";
+import {
+  GeminiChessPlayerDurable,
+  OpenaiChessPlayerDurable,
+  ChessMatchDurable,
+} from "./generated/think.cloudflare.ts";
+import {
+  parseThinkDecision,
+  turnMessage,
+  type ChessTurnInput,
+  type ThinkTurnTrace,
+} from "./providers.ts";
 import { renderUi } from "./ui.ts";
 
-interface Env extends ModelEnv {
+export { ChessMatchDurable, GeminiChessPlayerDurable, OpenaiChessPlayerDurable };
+
+interface Env {
+  AI: Ai;
+  OPENROUTER_API_KEY: string;
   CHESS_GAME: DurableObjectNamespace<ChessGame>;
+  CHESS_MATCH: DurableObjectNamespace;
+  OPENAI_CHESS_PLAYER: DurableObjectNamespace;
+  GEMINI_CHESS_PLAYER: DurableObjectNamespace;
   DEMO_ACCESS_TOKEN: string;
+}
+
+interface ThinkPlayerStub {
+  runTurnWithTrace(
+    input: string,
+    props?: Record<string, unknown>,
+  ): Promise<ThinkTurnTrace>;
 }
 
 function json(value: unknown, status = 200): Response {
@@ -31,6 +56,27 @@ export class ChessGame extends DurableObject<Env> {
     return (await this.ctx.storage.get<ChessState>("state")) ?? initialChessState;
   }
 
+  async #play(
+    agent: string,
+    stableId: string,
+    props: Record<string, unknown>,
+    turn: ChessTurnInput,
+  ) {
+    const binding = agent === "openai-chess-player"
+      ? this.env.OPENAI_CHESS_PLAYER
+      : agent === "gemini-chess-player"
+        ? this.env.GEMINI_CHESS_PLAYER
+        : null;
+    if (!binding) throw new Error(`no generated Think binding for ${agent}`);
+
+    // A distinct Think session per game/ply keeps every model transcript and
+    // reasoning stream durable without leaking context across games.
+    const instance = `${this.ctx.id.toString()}:${stableId}`;
+    const player = await getAgentByName(binding as never, instance) as unknown as ThinkPlayerStub;
+    const trace = await player.runTurnWithTrace(turnMessage(turn), props);
+    return parseThinkDecision(trace, turn);
+  }
+
   async fetch(request: Request): Promise<Response> {
     if (!authorized(request, this.env)) return json({ error: "invalid demo access token" }, 401);
     const action = new URL(request.url).pathname.split("/").filter(Boolean).at(-1);
@@ -52,12 +98,12 @@ export class ChessGame extends DurableObject<Env> {
             component: ChessMatch.spec.impl,
             props: {},
             initialState: await this.#state(),
-            delegate: (descriptor) => {
-              if (!isChessAgentClass(descriptor.target)) {
-                throw new Error(`no typed provider binding for ${descriptor.agent}`);
-              }
-              return chooseMove(descriptor.target, descriptor.input.turn as ChessTurnInput, this.env);
-            },
+            delegate: (descriptor) => this.#play(
+              descriptor.agent,
+              descriptor.stableId,
+              descriptor.input,
+              descriptor.input.turn as ChessTurnInput,
+            ),
           });
           await this.ctx.storage.put("state", result.state);
           return json({ state: result.state, descriptor: result.descriptor });

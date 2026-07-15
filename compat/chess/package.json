@@ -13,7 +13,12 @@
     "deploy": "bun run generate && wrangler deploy --config wrangler.deploy.jsonc"
   },
   "dependencies": {
-    "chess.js": "^1.4.0"
+    "@cloudflare/think": "0.12.1",
+    "@openrouter/ai-sdk-provider": "2.10.0",
+    "agents": "0.17.3",
+    "ai": "^6.0.138",
+    "chess.js": "^1.4.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260715.1",

@@ -10,7 +10,7 @@ interface PlayerState extends Record<string, unknown> {
  * inferred meaning. */
 export default class GeminiChessPlayer extends Agent<PlayerState, ChessPlayerProps> {
   static agentName = "gemini-chess-player";
-  model = "google/gemini-2.5-flash";
+  model = "openrouter/google/gemini-2.5-flash";
   displayName = "Gemini";
   description = "Chooses one legal chess move using a Gemini model.";
   initialState: PlayerState = { turns: 0 };

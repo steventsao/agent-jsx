@@ -15,10 +15,13 @@
  *     ctx.exports facet — the 0.17 agentTool semantics, see
  *     docs/agent-tools-investigation.md + docs/think-target.md).
  *
- * getModel() is NOT emitted — the class inherits Think's throwing default, so it
- * boots as a DO and the consumer overrides getModel() with an AI-SDK model
- * (mock or real). Pinned to agents@0.17.3 + @cloudflare/think@0.12.1; the
- * proven 0.8.x reconcile runtime is untouched. <sensor>/<schedule>/<task> have
+ * getModel() is emitted when the authored spec carries an explicit model. Older
+ * low-level specs without one inherit Think's throwing default and can still be
+ * overridden by a consumer or test. Pinned to agents@0.17.3 +
+ * @cloudflare/think@0.12.1; the
+ * generated runTurnWithTrace bridge retains Think's public text/reasoning
+ * stream while binding the latest composition props for that turn. The proven
+ * 0.8.x reconcile runtime is untouched. <sensor>/<schedule>/<task> have
  * no think-mode mapping (reconcile's job) → loud target diagnostics.
  */
 
@@ -46,6 +49,14 @@ export interface ThinkEmitOptions {
   /** Tool-slot bindings (src/compile/slots.ts): a binding whose provider is a
    *  generated agent becomes a getTools() agentTool NAMED BY THE PROP KEY. */
   toolSlots?: ToolSlotBinding[];
+  /** Optional deployment-owned adapter for explicit authored model ids. This
+   *  keeps provider credentials/packages out of agent source while avoiding
+   *  provider inference in the compiler. The export receives (env, modelId)
+   *  and returns either the id or an AI SDK LanguageModel. */
+  modelResolver?: {
+    importPath: string;
+    exportName: string;
+  };
 }
 
 export interface ThinkEmit {
@@ -62,10 +73,10 @@ const identKey = (s: string) => (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(s) ? s : JSON
 
 /** Evaluate a spec's OWN render at sampleProps + initialState (expansion ON so a
  *  continuation-gated boundary/tool is still seen), collecting one kind of infra. */
-function renderInfra(spec: AnyAgentSpec) {
+function renderInfra(spec: AnyAgentSpec, sampleProps?: Record<string, unknown>) {
   const roots = withOutputs({ outputs: {}, setOutput: () => {}, expandSamples: true }, () =>
     evaluateComponent(spec.impl, {
-      ...(spec.sampleProps ?? {}),
+      ...(sampleProps ?? spec.sampleProps ?? {}),
       store: createStore(spec.initialState),
       emit: () => {},
     } as never)
@@ -74,9 +85,9 @@ function renderInfra(spec: AnyAgentSpec) {
 }
 
 /** Distinct subagent kinds a component's OWN render reveals, first-seen order. */
-function childKindsOfSpec(spec: AnyAgentSpec): string[] {
+function childKindsOfSpec(child: ChildAgentSpec): string[] {
   const kinds: string[] = [];
-  for (const rec of renderInfra(spec))
+  for (const rec of renderInfra(child.spec, child.sampleProps))
     if (rec.kind === "subagent") {
       const k = String(rec.config.kind);
       if (!kinds.includes(k)) kinds.push(k);
@@ -96,10 +107,13 @@ function subagentKindsFromAnalysis(analysis: Analysis): string[] {
 }
 
 /** Static <tool> records a component renders at rest: name + description. */
-function staticToolsOfSpec(spec: AnyAgentSpec): { name: string; description: string }[] {
+function staticToolsOfSpec(
+  spec: AnyAgentSpec,
+  sampleProps?: Record<string, unknown>,
+): { name: string; description: string }[] {
   const tools: { name: string; description: string }[] = [];
   const seen = new Set<string>();
-  for (const rec of renderInfra(spec))
+  for (const rec of renderInfra(spec, sampleProps))
     if (rec.kind === "tool" && !seen.has(rec.name)) {
       seen.add(rec.name);
       tools.push({ name: rec.name, description: String(rec.config.description ?? "") });
@@ -116,6 +130,7 @@ interface NodeInfo {
   binding: string;
   stateType: string;
   propsConst: string;
+  sampleProps?: Record<string, unknown>;
   /** getTools agentTool entries: { toolName, childKind }. */
   entries: { toolName: string; childKind: string }[];
   tools: { name: string; description: string }[];
@@ -137,6 +152,7 @@ export function emitThink(
     spec: c.spec,
     exportName: c.exportName,
     importPath: c.importPath,
+    sampleProps: c.sampleProps,
     className: `${pascal(c.spec.agentName)}Durable`,
     binding: scream(c.spec.agentName),
   }));
@@ -167,7 +183,8 @@ export function emitThink(
     importPath: string,
     className: string,
     binding: string,
-    plainKinds: string[]
+    plainKinds: string[],
+    sampleProps?: Record<string, unknown>,
   ): NodeInfo => ({
     isRoot,
     spec,
@@ -177,9 +194,10 @@ export function emitThink(
     binding,
     stateType: `${pascal(spec.agentName)}State`,
     propsConst: `${scream(spec.agentName)}_PROPS`,
+    sampleProps,
     entries: entriesFor(spec.agentName, plainKinds),
-    tools: staticToolsOfSpec(spec),
-    diagnostics: thinkTargetDiagnostics(spec),
+    tools: staticToolsOfSpec(spec, sampleProps),
+    diagnostics: thinkTargetDiagnostics(spec, sampleProps),
   });
 
   const nodes: NodeInfo[] = [
@@ -190,22 +208,28 @@ export function emitThink(
       root.componentImport,
       rootClass,
       scream(root.spec.agentName),
-      subagentKindsFromAnalysis(analysis)
+      subagentKindsFromAnalysis(analysis),
+      root.spec.sampleProps,
     ),
     ...kids.map((k) =>
-      nodeFrom(false, k.spec, k.exportName, k.importPath, k.className, k.binding, childKindsOfSpec(k.spec))
+      nodeFrom(false, k.spec, k.exportName, k.importPath, k.className, k.binding, childKindsOfSpec(k), k.sampleProps)
     ),
   ];
 
   const hasAnyTool = nodes.some((n) => n.tools.length > 0);
   const hasAnyAgentTool = nodes.some((n) => n.entries.length > 0);
   const hasAnyGetTools = hasAnyTool || hasAnyAgentTool;
+  const hasAnyModel = nodes.some((n) => Boolean(n.spec.model));
 
   // ── imports (conditional, so leaf/toolless emits stay minimal) ──
   const importLines = [`import { Think } from "@cloudflare/think";`];
   if (hasAnyAgentTool) importLines.push(`import { agentTool } from "agents/agent-tools";`);
   if (hasAnyTool) importLines.push(`import { tool, jsonSchema } from "ai";`);
   if (hasAnyGetTools) importLines.push(`import type { ToolSet } from "ai";`);
+  if (hasAnyModel && opts.modelResolver)
+    importLines.push(
+      `import { ${opts.modelResolver.exportName} } from ${JSON.stringify(opts.modelResolver.importPath)};`,
+    );
   importLines.push(`import { evaluateTree } from "${rt}/compile/evaluate.ts";`);
   importLines.push(
     hasAnyTool
@@ -220,6 +244,7 @@ export function emitThink(
   for (const k of kids) importLines.push(`import { ${k.exportName} } from "${k.importPath}";`);
 
   const envEntries = nodes.map((n) => `  ${n.binding}: DurableObjectNamespace;`).join("\n");
+  const modelEnvEntry = hasAnyModel ? "  AI: Ai;\n" : "";
 
   // ── shared Think base ──
   const toolRecordsMethod = hasAnyTool
@@ -258,6 +283,58 @@ export function emitThink(
 abstract class ThinkAgentBase<S extends Record<string, unknown>> extends Think<GeneratedEnv> {
   protected abstract renderTree(): unknown;
   protected abstract imperativePrompt(state: S): string;
+
+  /** Per-turn composition props. They remain transient: Think persists the
+   *  transcript/state, while the caller supplies the latest boundary input. */
+  #activeTurn?: { token: object; props?: Record<string, unknown> };
+
+  protected turnProps<T extends Record<string, unknown>>(fallback: T): T {
+    return (this.#activeTurn?.props ?? fallback) as T;
+  }
+
+  /** Generated programmatic-turn bridge. Think owns durable chat, persistence,
+   *  recovery, and streaming; callers receive the public text plus any model-
+   *  supplied reasoning stream for progress/thought UI. */
+  async runTurnWithTrace(input: string, props?: Record<string, unknown>) {
+    let requestId = "";
+    let text = "";
+    let reasoning = "";
+    let failure = "";
+    let interrupted = false;
+    const turnToken = {};
+    try {
+      await this.chat(() => {
+        // Bind props only after Think admits this queued turn. Token ownership
+        // prevents one interleaved RPC from clearing a newer turn's context.
+        this.#activeTurn = { token: turnToken, props };
+        return [{
+          id: crypto.randomUUID(),
+          role: "user" as const,
+          parts: [{ type: "text" as const, text: input }],
+        }];
+      }, {
+        onStart: (event) => { requestId = event.requestId; },
+        onEvent: (json) => {
+          const chunk = JSON.parse(json) as { type?: string; delta?: unknown; text?: unknown };
+          const delta = typeof chunk.delta === "string"
+            ? chunk.delta
+            : typeof chunk.text === "string" ? chunk.text : "";
+          switch (chunk.type) {
+            case "text-delta": text += delta; break;
+            case "reasoning-delta": reasoning += delta; break;
+          }
+        },
+        onDone: () => {},
+        onError: (error) => { failure = error; },
+        onInterrupted: () => { interrupted = true; },
+      });
+    } finally {
+      if (this.#activeTurn?.token === turnToken) this.#activeTurn = undefined;
+    }
+    if (failure) throw new Error(failure);
+    if (interrupted) throw new Error("Think turn was interrupted before completion");
+    return { requestId, text: text.trim(), reasoning: reasoning.trim() };
+  }
 
   /** A store bridged to the DO: reads this.state, writes via setState (merge) —
    *  what makes a <tool> run closure's store.set(...) durable. */
@@ -315,6 +392,13 @@ ${toolLines}
     const initialState = n.isRoot
       ? `${JSON.stringify(n.spec.initialState)} as ${n.stateType}`
       : `{ ...${n.exportName}.spec.initialState } as ${n.stateType}`;
+    const authoredModel = `${n.exportName}.spec.model ?? ${JSON.stringify(n.spec.model)}`;
+    const resolvedModel = opts.modelResolver
+      ? `${opts.modelResolver.exportName}(this.env, ${authoredModel})`
+      : authoredModel;
+    const modelBlock = n.spec.model
+      ? `\n  override getModel() { return ${resolvedModel}; }`
+      : `\n  // getModel() inherits Think's throwing default; consumers may override it.`;
     const diagComment = n.diagnostics.length
       ? `${formatTargetDiagnosticsForComment(n.diagnostics)}\n`
       : "";
@@ -335,14 +419,12 @@ ${toolLines}
     return `// ---------------------------------------------------------------------------
 // ${n.isRoot ? "Root" : "Child"} agent: ${n.spec.agentName}${n.isRoot ? "" : ` (from ${n.importPath})`}
 type ${n.stateType} = typeof ${n.exportName}.spec.initialState & Record<string, unknown>;
-const ${n.propsConst} = ${JSON.stringify(n.spec.sampleProps ?? {})} as const;
+const ${n.propsConst} = ${JSON.stringify(n.sampleProps ?? n.spec.sampleProps ?? {})} as const;
 
 ${diagComment}export class ${n.className} extends ThinkAgentBase<${n.stateType}> {
-  // getModel() inherits Think's throwing default — the consumer overrides it with
-  // an AI-SDK model (mock or real). The class still boots as a DO without one.
-  initialState = ${initialState};
+  initialState = ${initialState};${modelBlock}
   protected renderTree(): unknown {
-    return ${n.exportName}.spec.impl({ ...${n.propsConst}, store: this.boundStore<${n.stateType}>(), emit: () => {} } as never);
+    return ${n.exportName}.spec.impl({ ...this.turnProps(${n.propsConst}), store: this.boundStore<${n.stateType}>(), emit: () => {} } as never);
   }
   protected imperativePrompt(state: ${n.stateType}): string {
     return ${n.exportName}.spec.getPrompt?.(state) ?? "";
@@ -359,7 +441,7 @@ ${diagComment}export class ${n.className} extends ThinkAgentBase<${n.stateType}>
 ${importLines.join("\n")}
 
 export interface GeneratedEnv {
-${envEntries}
+${modelEnvEntry}${envEntries}
 }
 
 ${base}
@@ -369,7 +451,7 @@ ${nodes.map(emitClass).join("\n\n")}
 
   const wrangler = `// GENERATED by agent-jsx (THINK mode) — merge into wrangler.jsonc
 {
-  "durable_objects": {
+${hasAnyModel ? `  "ai": { "binding": "AI" },\n` : ""}  "durable_objects": {
     "bindings": [
 ${nodes.map((n) => `      { "name": "${n.binding}", "class_name": "${n.className}" }`).join(",\n")}
     ]

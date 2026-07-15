@@ -16,8 +16,9 @@
  *   - a plain nested child → agentTool named by KIND;
  *   - a static <tool> → getTools()[name] = tool(...) via the base toolByName;
  *   - sensors/schedules/tasks are think-UNSUPPORTED → loud target diagnostics;
- *   - getModel() is NOT emitted (inherits Think's throwing default; the consumer
- *     overrides it) — the class still boots.
+ *   - an explicit class model becomes getModel(); a legacy spec without one
+ *     still inherits Think's throwing default and boots for tests/overrides;
+ *   - runTurnWithTrace binds per-turn props and collects public reasoning parts.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -31,6 +32,7 @@ import { Notetaker } from "../examples/think/notetaker.tsx";
 import { Researcher } from "../examples/think/researcher.tsx";
 import { UptimeAgent } from "../examples/uptime-agent.tsx";
 import { Investigator } from "../examples/investigator.tsx";
+import { Agent, compileAgentClass } from "../src/agent-class.tsx";
 
 const withWorker = () => (
   <Coordinator name="coord">{(handleCall) => <Worker name="w" onCall={handleCall} />}</Coordinator>
@@ -71,12 +73,82 @@ describe("emitThink — shared Think base + system prompt", () => {
     expect(agents).toContain("export class ToolWorkerDurable extends ThinkAgentBase<");
   });
 
-  it("does NOT emit a getModel method — the class inherits Think's throwing default (consumer overrides)", () => {
+  it("leaves getModel ungenerated when a low-level spec has no authored model", () => {
     const { agents } = coordinatorThink();
     // No method definition, no LanguageModel import (a comment may still name it).
     expect(agents).not.toContain("getModel(): LanguageModel");
     expect(agents).not.toContain("import type { LanguageModel");
     expect(agents).not.toContain("getModel() {");
+  });
+
+  it("emits an explicitly authored class model and a traced programmatic-turn bridge", () => {
+    class ModeledAgent extends Agent<{ turns: number }, { topic: string }> {
+      static agentName = "modeled";
+      model = "openrouter/openai/gpt-5-mini";
+      initialState = { turns: 0 };
+
+      getPrompt() {
+        return `Discuss ${this.props.topic}.`;
+      }
+    }
+
+    const Modeled = compileAgentClass(ModeledAgent);
+    const analysis = analyzeAgent({
+      spec: Modeled.spec,
+      exportName: "Modeled",
+      importPath: "./modeled.tsx",
+      samples: [{ props: { topic: "compilers" }, state: Modeled.spec.initialState }],
+    });
+    const { agents, wrangler } = emitThink(
+      { spec: Modeled.spec, componentName: "Modeled", componentImport: "./modeled.tsx" },
+      [],
+      analysis,
+      { runtimeImport: "./runtime" },
+    );
+
+    expect(agents).toContain('override getModel() { return Modeled.spec.model ?? "openrouter/openai/gpt-5-mini"; }');
+    expect(agents).toContain("async runTurnWithTrace(input: string, props?: Record<string, unknown>)");
+    expect(agents).toContain("const turnToken = {};");
+    expect(agents).toContain("await this.chat(() => {");
+    expect(agents).toContain("this.#activeTurn = { token: turnToken, props };");
+    expect(agents).toContain('case "reasoning-delta"');
+    expect(agents).toContain("this.turnProps(MODELED_PROPS)");
+    expect(wrangler).toContain('"ai": { "binding": "AI" }');
+  });
+
+  it("can delegate explicit model strings to deployment-owned provider glue", () => {
+    class ModeledAgent extends Agent<{ turns: number }> {
+      static agentName = "modeled-adapter";
+      model = "openrouter/openai/gpt-5-mini";
+      initialState = { turns: 0 };
+    }
+
+    const Modeled = compileAgentClass(ModeledAgent);
+    const analysis = analyzeAgent({
+      spec: Modeled.spec,
+      exportName: "Modeled",
+      importPath: "./modeled.tsx",
+    });
+    const { agents } = emitThink(
+      { spec: Modeled.spec, componentName: "Modeled", componentImport: "./modeled.tsx" },
+      [],
+      analysis,
+      {
+        runtimeImport: "./runtime",
+        modelResolver: {
+          importPath: "./model-runtime.ts",
+          exportName: "resolveDeploymentModel",
+        },
+      },
+    );
+
+    expect(agents).toContain(
+      'import { resolveDeploymentModel } from "./model-runtime.ts";',
+    );
+    expect(agents).toContain(
+      'override getModel() { return resolveDeploymentModel(this.env, Modeled.spec.model ?? "openrouter/openai/gpt-5-mini"); }',
+    );
+    expect(agents).not.toContain('if (model.startsWith("openrouter/"))');
   });
 });
 

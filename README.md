@@ -7,6 +7,8 @@ Compose typed agents as JSX. Serializable props are input, function props are
 explicit capabilities, `name` is durable identity, and the compiler emits the
 Cloudflare Agents or Flue wiring.
 
+API reference: <https://steventsao.github.io/agent-jsx/api/>
+
 ## The authoring model
 
 An agent is a hierarchy-free class modeled after `cloudflare/agents`. It owns
@@ -107,30 +109,23 @@ injects only `side` plus a stable instance name; the compiler has no chess
 special case. See [examples/chess](examples/chess/) for the complete game,
 generated Flue modules, and deployable Worker fixture.
 
-The chess Worker also binds providers by live class identity:
-
-```ts
-const providers = new Map([
-  [OpenAIAgent, openAIMove],
-  [GeminiAgent, geminiMove],
-]);
-```
-
-The class reference is private, non-serializable metadata. Cross-runtime
-delegation still uses the generated profile/class name, but local code never
-needs `if (agent === "openai-chess-player")` dispatch.
+The deployable chess Worker executes the same boundary descriptor through the
+generated Cloudflare Think class. The compiler supplies the actual turn as
+transient props, runs Think's durable programmatic chat turn, and returns its
+public text/reasoning stream. The move is validated before durable state changes;
+the reasoning stream is capped and rendered as a thought bubble.
 
 ## What gets generated
 
-| JSX concept | Cloudflare Agents | Flue |
-|---|---|---|
-| authored Agent class | typed Agent/Durable Object class | `defineAgentProfile` |
-| nested agent | child binding, migration, accessor | parent `subagents` roster |
-| stable `name` | child instance identity | task/spawn-plan identity |
-| serializable prop | `setProps` input | `session.task` input |
-| passed callable ref | explicit generated RPC ACL | awaited task result or generated binding |
-| tool slot | native `agentTool(ChildClass, schemas)` | profile alias named by the prop key |
-| prompt tree | `getSystemPrompt` / rendered context | profile instructions |
+| JSX concept | Cloudflare Agents | Cloudflare Think | Flue |
+|---|---|---|---|
+| authored Agent class | typed Durable Object class | `Think<Env>` subclass | `defineAgentProfile` |
+| explicit model | retained target metadata | generated `getModel()` | profile `model` |
+| nested agent | child binding and migration | native `agentTool` or traced programmatic turn | parent `subagents` roster |
+| serializable prop | `setProps` input | per-turn system-prompt props | `session.task` input |
+| passed callable ref | explicit generated RPC ACL | explicit result routing | awaited task result or generated binding |
+| prompt tree | rendered context | generated `getSystemPrompt()` | profile instructions |
+| public reasoning | target-defined | generated text/reasoning trace | target-defined |
 
 Cloudflare native `agentTool` preserves the child description, display name,
 input schema, output schema, structured result, and stable tool-call run
@@ -149,22 +144,25 @@ desired-state composition layer above them.
 
 ## Secrets and the chess Worker
 
-Provider keys stay in Worker bindings and are never returned to the browser or
-stored in JSX props:
+The authored classes keep explicit ids such as
+`openrouter/openai/gpt-5-mini`. The Think emitter accepts a deployment-owned
+`modelResolver` import, so provider packages and credentials stay out of agent
+source and the compiler never guesses them from class names. This chess deploy
+maps the explicit `openrouter/` prefix through the OpenRouter AI SDK provider;
+other ids can fall through to Think's `AI` binding. The browser receives neither
+provider credentials nor target bindings:
 
 ```sh
 cd compat/chess
 bun install
 bunx wrangler secret put OPENROUTER_API_KEY
-bunx wrangler secret put GEMINI_API_KEY
 bunx wrangler secret put DEMO_ACCESS_TOKEN
 bun run deploy
 ```
 
-The browser sends only the demo access token to the Worker. The Worker reads
-OpenRouter/Gemini secrets server-side, validates each move against the legal
-move schema and chess.js, then persists game state in a Durable Object. For a
-public product, replace the demo token with user authentication and rate
+The Worker validates the Think result against the legal move list and chess.js,
+then persists the move and its bounded public thought bubble in a Durable Object.
+For a public product, replace the demo token with user authentication and rate
 limiting.
 
 ## Verify it
@@ -183,7 +181,7 @@ cd ../cloudflare && bun run typecheck && bun run test
 # Native agents/agentTool execution inside workerd
 cd ../think && bun run typecheck && bun run test
 
-# Chess provider and generated Worker checks
+# Chess Think target and generated Worker checks
 cd ../chess && bun run typecheck && bun run test
 ```
 
@@ -203,7 +201,10 @@ Useful entry points:
 - [examples/chess/match.tsx](examples/chess/match.tsx) — explicit hierarchy and
   callable binding in composition JSX.
 - [src/compile/emit-think.ts](src/compile/emit-think.ts) — native Cloudflare
-  `agentTool` emission.
+  `agentTool`, authored model + deployment resolver, transient turn-prop, and
+  reasoning-trace emission.
+- [docs-site/api/index.html](docs-site/api/index.html) — published SDK reference
+  for the authored primitives.
 - [src/compile/emit-flue.ts](src/compile/emit-flue.ts) — Flue profiles, aliases,
   tools, and workflows.
 - [COMPAT-REPORT.md](COMPAT-REPORT.md) — target limitations and compatibility
