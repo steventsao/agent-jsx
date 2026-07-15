@@ -1,7 +1,7 @@
 import { createStore, withOutputs } from "../store.ts";
 import { collectInfra } from "../tree.ts";
 import { evaluateComponent } from "./evaluate.ts";
-import type { AgentSpec } from "../agent-component.tsx";
+import type { AnyAgentSpec } from "../agent-component.tsx";
 import type { ChildAgentSpec } from "./emit-cloudflare.ts";
 
 export type TargetDiagnosticSeverity = "warning" | "error";
@@ -90,7 +90,7 @@ const THINK_UNSUPPORTED: Record<string, string> = {
   task: "think-task-unsupported",
 };
 
-export function thinkTargetDiagnostics(spec: AgentSpec): TargetDiagnostic[] {
+export function thinkTargetDiagnostics(spec: AnyAgentSpec): TargetDiagnostic[] {
   const byKind = new Map<string, string[]>();
   try {
     // Sample-output expansion ON so a continuation-gated <task>/<tool> is seen too.

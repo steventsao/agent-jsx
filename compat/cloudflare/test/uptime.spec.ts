@@ -15,7 +15,7 @@
  * (runInDurableObject signatures, stub typing) may be adjusted freely.
  */
 
-import { env, runInDurableObject } from "cloudflare:test";
+import { env, runInDurableObject as runInDurableObjectRaw } from "cloudflare:test";
 import { getAgentByName } from "agents";
 import { describe, expect, it } from "vitest";
 
@@ -34,6 +34,20 @@ declare module "cloudflare:test" {
     INVESTIGATOR: DurableObjectNamespace;
   }
 }
+
+declare global {
+  namespace Cloudflare {
+    interface Env {
+      UPTIME: DurableObjectNamespace;
+      INVESTIGATOR: DurableObjectNamespace;
+    }
+  }
+}
+
+const runInDurableObject = <T>(
+  stub: DurableObjectStub,
+  callback: (agent: AnyAgent) => T | Promise<T>,
+) => runInDurableObjectRaw(stub, (instance) => callback(instance as unknown as AnyAgent));
 
 const DOWN_SITE = "https://b.example";
 const CHILD_NAME = `main:investigate:${DOWN_SITE}`;

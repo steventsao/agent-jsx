@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "imports": {
+    "#agentjsx/jsx-runtime": "./src/jsx-data-runtime.ts",
+    "#agentjsx/jsx-dev-runtime": "./src/jsx-data-runtime.ts"
+  },
   "description": "React's reconciler as an agent control plane: composition + behavior declared as components (props/state changes), priompt-style context rendering, execution left to the actor runtime.",
   "scripts": {
     "ex:uptime": "bun examples/uptime.tsx",
@@ -17,10 +21,14 @@
     "gen:verify-fixture": "bun scripts/gen-verify-fixture.ts",
     "typecheck": "tsc --noEmit",
     "ex:compile": "bun examples/compile.tsx",
+    "chess:generate": "bun examples/chess/generate.tsx",
+    "chess:worker:test": "cd compat/chess && bun run test && bun run typecheck",
+    "chess:worker:deploy": "cd compat/chess && bun run deploy",
     "fixtures": "bun scripts/gen-fixtures.tsx",
     "fixtures:pdf": "bun scripts/pdf/build-fixture.tsx"
   },
   "dependencies": {
+    "chess.js": "^1.4.0",
     "react": "^19.0.0",
     "react-reconciler": "^0.31.0",
     "unpdf": "^1.6.2",

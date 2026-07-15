@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import uptimeAgent, { spawnPlan } from "../src/generated/uptime.flue.ts";
 import { investigatorProfile } from "../src/generated/investigator.flue.ts";
 import { tool_workerProfile } from "../src/generated/tool-worker.flue.ts";
+import coordinatorAgent from "../src/generated/coordinator.flue.ts";
 
 const incident = {
   statuses: { "https://b.example": { state: "down" as const, since: 4 } },
@@ -47,6 +48,13 @@ describe("generated modules against real @flue/runtime", () => {
     expect((tool_workerProfile as { description?: string }).description).toBe(
       "Answer a research query from the document corpus."
     );
+  });
+
+  it("aliases a tool-slot child by the explicit prop key in the real Flue roster", async () => {
+    const config = await (
+      coordinatorAgent as { initialize: (ctx: unknown) => Promise<{ subagents?: { name?: string }[] }> }
+    ).initialize({});
+    expect(config.subagents?.map((profile) => profile.name)).toEqual(["onCall"]);
   });
 
   it("spawnPlan derives stable-id descriptors from state", () => {

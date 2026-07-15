@@ -37,7 +37,7 @@ export interface ReviewVerdict {
   note: string;
 }
 
-export interface ReviewerProps extends Record<string, unknown> {
+export interface ReviewerProps {
   page: string;
   vlm: number;
   text: number;
@@ -54,6 +54,10 @@ export interface ReviewerState extends Record<string, unknown> {
 export const Reviewer = agentComponent<ReviewerProps, ReviewerState>({
   agentName: "reviewer",
   initialState: { pulledSource: false },
+  capabilities: {
+    onResult: { kind: "result" },
+    adjudicate: { kind: "method" },
+  },
   sampleProps: {
     page: "sample-page",
     vlm: 0.6,

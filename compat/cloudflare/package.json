@@ -2,6 +2,9 @@
   "name": "agent-jsx-compat-cloudflare",
   "private": true,
   "type": "module",
+  "imports": {
+    "#agentjsx/*": "./src/generated/runtime/*.ts"
+  },
   "description": "Proves generated artifacts run on the REAL cloudflare/agents package inside workerd (vitest-pool-workers) — no mocks, no dev server.",
   "scripts": {
     "generate": "bun scripts/generate.tsx",

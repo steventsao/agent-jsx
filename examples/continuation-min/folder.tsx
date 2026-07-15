@@ -12,7 +12,7 @@
 import { agentComponent } from "../../src/agent-component.tsx";
 import { useAgentState } from "../../src/state.ts";
 
-export interface ContFolderProps extends Record<string, unknown> {
+export interface ContFolderProps {
   item: string;
   /** Fold the result back to the parent (callback prop → generated RPC). */
   onFolded: (item: string, upper: string) => void;
@@ -26,6 +26,7 @@ export interface ContFolderState extends Record<string, unknown> {
 export const ContFolder = agentComponent<ContFolderProps, ContFolderState>({
   agentName: "cont-folder",
   initialState: { folded: null },
+  capabilities: { onFolded: { kind: "callback" } },
   sampleProps: { item: "sample", onFolded: () => {} },
   impl: ({ item, onFolded, store }) => {
     const { folded } = useAgentState(store);

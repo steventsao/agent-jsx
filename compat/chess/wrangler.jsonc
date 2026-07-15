@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agent-jsx-chess",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-07-15",
+  "workers_dev": true,
+  "vars": {
+    "OPENAI_MODEL": "openai/gpt-5-mini",
+    "GEMINI_MODEL": "gemini-2.5-flash"
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "CHESS_GAME", "class_name": "ChessGame" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ChessGame"] }
+  ]
+}

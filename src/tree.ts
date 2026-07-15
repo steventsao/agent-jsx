@@ -23,7 +23,11 @@ const INFRA_KINDS = new Set<string>(["sensor", "schedule", "subagent", "tool", "
 export function collectInfra(node: HostNode | null, out: InfraRecord[] = []): InfraRecord[] {
   if (!node) return out;
   if (INFRA_KINDS.has(node.type)) {
-    const { name, ...rest } = node.props as { name?: unknown };
+    const { name, __agentBindings, __agentTarget, ...rest } = node.props as {
+      name?: unknown;
+      __agentBindings?: unknown;
+      __agentTarget?: unknown;
+    };
     if (typeof name !== "string" || !name) {
       throw new Error(`<${node.type}> requires a stable string \`name\` prop (host-level identity)`);
     }
@@ -33,10 +37,42 @@ export function collectInfra(node: HostNode | null, out: InfraRecord[] = []): In
       if (typeof v === "function") handlers[k] = v as (...args: any[]) => unknown;
       else config[k] = v;
     }
-    out.push({ kind: node.type as InfraKind, name, config, handlers });
+    const bindings =
+      node.type === "subagent" &&
+      typeof __agentBindings === "object" &&
+      __agentBindings !== null
+        ? (__agentBindings as InfraRecord["bindings"])
+        : undefined;
+    const target =
+      node.type === "subagent" &&
+      (typeof __agentTarget === "object" || typeof __agentTarget === "function") &&
+      __agentTarget !== null
+        ? (__agentTarget as object)
+        : undefined;
+    out.push({
+      kind: node.type as InfraKind,
+      name,
+      config,
+      handlers,
+      ...(bindings ? { bindings } : {}),
+      ...(target ? { target } : {}),
+    });
   }
   for (const child of node.children) collectInfra(child, out);
   return out;
+}
+
+/** Resolve the one explicitly declared delegate-result sink for a boundary. */
+export function resultBindingName(record: InfraRecord): string | null {
+  const names = Object.entries(record.bindings ?? {})
+    .filter(([, binding]) => binding.kind === "result")
+    .map(([name]) => name);
+  if (names.length > 1) {
+    throw new Error(
+      `[agent-jsx] subagent "${record.name}" declares multiple result bindings (${names.join(", ")})`
+    );
+  }
+  return names[0] ?? null;
 }
 
 /** Flatten the committed <prompt> subtree into priority-tagged blocks. */

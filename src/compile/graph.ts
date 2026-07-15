@@ -18,7 +18,7 @@
 
 import type { ReactNode } from "react";
 import { createStore, withOutputs } from "../store.ts";
-import type { AgentSpec } from "../agent-component.tsx";
+import type { AnyAgentSpec } from "../agent-component.tsx";
 import { analyze, type Analysis } from "./analyze.ts";
 import { evaluateComponent } from "./evaluate.ts";
 import { collectInfra } from "../tree.ts";
@@ -36,7 +36,7 @@ export interface AgentSample {
 /** A human-authored agent component + where its module lives, plus the sample
  *  render inputs used to split its own static vs dynamic capability. */
 export interface AgentModule {
-  spec: AgentSpec;
+  spec: AnyAgentSpec;
   /** The agentComponent export name (for the generated import). */
   exportName: string;
   /** Import path to the component .tsx from the generated module's directory. */
@@ -59,7 +59,7 @@ export interface AgentNode extends AgentModule {
  *  `useAgentState` degenerates to a store read instead of a live React hook.
  *  `emit` is a no-op here — it is only ever called from a <task> onDone at
  *  runtime, never during a render/static-eval. */
-function renderSample(spec: AgentSpec, sample: AgentSample): ReactNode {
+function renderSample(spec: AnyAgentSpec, sample: AgentSample): ReactNode {
   return {
     type: spec.impl,
     props: {

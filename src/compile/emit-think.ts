@@ -22,7 +22,7 @@
  * no think-mode mapping (reconcile's job) → loud target diagnostics.
  */
 
-import type { AgentSpec } from "../agent-component.tsx";
+import type { AnyAgentSpec } from "../agent-component.tsx";
 import type { Analysis } from "./analyze.ts";
 import type { ToolSlotBinding } from "./slots.ts";
 import type { RootAgentSpec, ChildAgentSpec } from "./emit-cloudflare.ts";
@@ -62,7 +62,7 @@ const identKey = (s: string) => (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(s) ? s : JSON
 
 /** Evaluate a spec's OWN render at sampleProps + initialState (expansion ON so a
  *  continuation-gated boundary/tool is still seen), collecting one kind of infra. */
-function renderInfra(spec: AgentSpec) {
+function renderInfra(spec: AnyAgentSpec) {
   const roots = withOutputs({ outputs: {}, setOutput: () => {}, expandSamples: true }, () =>
     evaluateComponent(spec.impl, {
       ...(spec.sampleProps ?? {}),
@@ -74,7 +74,7 @@ function renderInfra(spec: AgentSpec) {
 }
 
 /** Distinct subagent kinds a component's OWN render reveals, first-seen order. */
-function childKindsOfSpec(spec: AgentSpec): string[] {
+function childKindsOfSpec(spec: AnyAgentSpec): string[] {
   const kinds: string[] = [];
   for (const rec of renderInfra(spec))
     if (rec.kind === "subagent") {
@@ -96,7 +96,7 @@ function subagentKindsFromAnalysis(analysis: Analysis): string[] {
 }
 
 /** Static <tool> records a component renders at rest: name + description. */
-function staticToolsOfSpec(spec: AgentSpec): { name: string; description: string }[] {
+function staticToolsOfSpec(spec: AnyAgentSpec): { name: string; description: string }[] {
   const tools: { name: string; description: string }[] = [];
   const seen = new Set<string>();
   for (const rec of renderInfra(spec))
@@ -109,7 +109,7 @@ function staticToolsOfSpec(spec: AgentSpec): { name: string; description: string
 
 interface NodeInfo {
   isRoot: boolean;
-  spec: AgentSpec;
+  spec: AnyAgentSpec;
   exportName: string;
   importPath: string;
   className: string;
@@ -162,7 +162,7 @@ export function emitThink(
 
   const nodeFrom = (
     isRoot: boolean,
-    spec: AgentSpec,
+    spec: AnyAgentSpec,
     exportName: string,
     importPath: string,
     className: string,
@@ -299,7 +299,7 @@ ${toolByNameMethod}}`;
       ...n.entries.map((e) => {
         const child = classByKind.get(e.childKind);
         if (!child) throw new Error(`emitThink: no class registered for child kind "${e.childKind}"`);
-        return `      ${identKey(e.toolName)}: agentTool(${child.className}, { description: ${child.exportName}.spec.description, inputSchema: ${child.exportName}.spec.inputSchema }),`;
+        return `      ${identKey(e.toolName)}: agentTool(${child.className}, { description: ${child.exportName}.spec.description ?? ${JSON.stringify(e.toolName)}, displayName: ${child.exportName}.spec.displayName, inputSchema: ${child.exportName}.spec.inputSchema, outputSchema: ${child.exportName}.spec.outputSchema }),`;
       }),
     ].join("\n");
     const getToolsBlock =
@@ -318,6 +318,20 @@ ${toolLines}
     const diagComment = n.diagnostics.length
       ? `${formatTargetDiagnosticsForComment(n.diagnostics)}\n`
       : "";
+    const structuredOutputBlock = n.spec.outputSchema
+      ? `
+
+  /** Native agentTool structured result: parse the child turn's final text
+   *  through the component's output contract. agentTool validates it again at
+   *  the parent boundary before returning it to the model. */
+  protected override getAgentToolOutput(runId: string): unknown {
+    const text = super.getAgentToolSummary(runId, undefined);
+    if (!text) return undefined;
+    let value: unknown = text;
+    try { value = JSON.parse(text); } catch { /* schema reports the mismatch */ }
+    return ${n.exportName}.spec.outputSchema?.parse(value);
+  }`
+      : "";
     return `// ---------------------------------------------------------------------------
 // ${n.isRoot ? "Root" : "Child"} agent: ${n.spec.agentName}${n.isRoot ? "" : ` (from ${n.importPath})`}
 type ${n.stateType} = typeof ${n.exportName}.spec.initialState & Record<string, unknown>;
@@ -332,7 +346,7 @@ ${diagComment}export class ${n.className} extends ThinkAgentBase<${n.stateType}>
   }
   protected imperativePrompt(state: ${n.stateType}): string {
     return ${n.exportName}.spec.getPrompt?.(state) ?? "";
-  }${getToolsBlock}
+  }${structuredOutputBlock}${getToolsBlock}
 }`;
   };
 

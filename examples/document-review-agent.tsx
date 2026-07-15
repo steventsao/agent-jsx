@@ -126,7 +126,7 @@ export function synthesizeCandidate(input: {
   };
 }
 
-export interface ExtractionAttemptProps extends Record<string, unknown> {
+export interface ExtractionAttemptProps {
   attempt: number;
   model: string;
   label: string;
@@ -141,6 +141,7 @@ interface ExtractionAttemptState extends Record<string, unknown> {
 export const ExtractionAttempt = agentComponent<ExtractionAttemptProps, ExtractionAttemptState>({
   agentName: "extraction-attempt",
   initialState: { started: false },
+  capabilities: { onResult: { kind: "result" } },
   sampleProps: {
     attempt: 1,
     model: MODEL_LADDER[0]!.model,

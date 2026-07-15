@@ -16,7 +16,7 @@ export const workerInput = z.object({ query: z.string().min(1) });
 /** The OUTPUT contract — validated before it lands in the parent's __outputs. */
 export const workerOutput = z.object({ answer: z.string() });
 
-export interface WorkerProps extends Record<string, unknown> {
+export interface WorkerProps {
   // Optional at the COMPOSITION site: a normal parent passes them; when this
   // agent fills a tool slot, the input arrives from the MODEL at call time (the
   // inputSchema is the real, enforced contract either way).
@@ -39,6 +39,7 @@ export const Worker = agentComponent<WorkerProps, WorkerState, { answer: string 
   inputSchema: workerInput,
   outputSchema: workerOutput,
   initialState: { answered: false },
+  capabilities: { onResult: { kind: "result" } },
   sampleProps: { query: "sample", onResult: () => {} },
   impl: ({ query, onResult, store }) => {
     const { answered } = useAgentState(store);

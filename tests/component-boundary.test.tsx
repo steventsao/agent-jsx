@@ -9,7 +9,7 @@ interface ParentState extends Record<string, unknown> {
   result: string | null;
 }
 
-interface ChildProps extends Record<string, unknown> {
+interface ChildProps {
   label: string;
   onResult: (value: string) => void;
 }
@@ -21,6 +21,7 @@ interface ChildState extends Record<string, unknown> {
 const Child = agentComponent<ChildProps, ChildState>({
   agentName: "child-worker",
   initialState: { checked: [] },
+  capabilities: { onResult: { kind: "result" } },
   sampleProps: { label: "sample", onResult: () => {} },
   impl: ({ label, onResult, store }) => {
     const { checked } = useAgentState(store);
@@ -69,6 +70,7 @@ describe("agent component boundary", () => {
     expect(boundary.config.kind).toBe("child-worker");
     expect(boundary.config.label).toBe("alpha");
     expect(typeof boundary.handlers.onResult).toBe("function");
+    expect(boundary.bindings).toEqual({ onResult: { kind: "result" } });
   });
 
   it("child implementation evaluates independently from props and its own store", async () => {

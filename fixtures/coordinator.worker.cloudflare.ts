@@ -23,7 +23,7 @@ import { Worker } from "../agents/worker.tsx";
  *  from the spec — the state-type string plumbing is gone. */
 type RootState = typeof Coordinator.spec.initialState & Record<string, unknown>;
 
-export interface GeneratedEnv {
+export interface GeneratedEnv extends Cloudflare.Env {
   COORDINATOR: DurableObjectNamespace;
   TOOL_WORKER: DurableObjectNamespace;
 }
@@ -38,6 +38,7 @@ interface CallbackRef {
   parentId: string;
   child: string;
   event: string;
+  capability: "callback" | "method" | "result" | "continuation";
 }
 
 interface ChildRuntimeState {
@@ -76,6 +77,8 @@ abstract class FiberAgentBase<S extends Record<string, unknown>> extends Agent<G
 
   /** Freshest closures from the latest render. Never persisted. */
   #handlers = new Map<string, InfraRecord["handlers"]>();
+  /** Explicit function-prop ACLs from the latest render. */
+  #bindings = new Map<string, InfraRecord["bindings"]>();
   /** Serializable config per record (sensor urls etc.), same freshness. */
   #configs = new Map<string, Record<string, unknown>>();
   #reconciling = false;
@@ -172,9 +175,11 @@ abstract class FiberAgentBase<S extends Record<string, unknown>> extends Agent<G
     const desired: InfraRecord[] = [];
     for (const r of this.#renderRoots()) collectInfra(r, desired);
     this.#handlers.clear();
+    this.#bindings.clear();
     this.#configs.clear();
     for (const rec of desired) {
       this.#handlers.set(`${rec.kind}:${rec.name}`, rec.handlers);
+      this.#bindings.set(`${rec.kind}:${rec.name}`, rec.bindings);
       this.#configs.set(`${rec.kind}:${rec.name}`, rec.config);
     }
     return desired;
@@ -271,14 +276,19 @@ abstract class FiberAgentBase<S extends Record<string, unknown>> extends Agent<G
       const childName = `${self}:${rec.name}`;
       const child = (await this.subagent(kind, childName)) as unknown as ChildStub;
       const callbacks: Record<string, CallbackRef> = {};
-      for (const event of Object.keys(rec.handlers))
+      for (const [event, capability] of Object.entries(rec.bindings ?? {})) {
+        if (typeof rec.handlers[event] !== "function") {
+          throw new Error(`declared capability ${event} has no function prop on subagent ${rec.name}`);
+        }
         callbacks[event] = {
           binding: this.selfBinding,
           parentName: self as string,
           parentId: this.ctx.id.toString(),
           child: rec.name,
           event,
+          capability: capability.kind,
         };
+      }
       const { kind: _k, ...childProps } = rec.config;
       await child.setProps(childProps, callbacks); // prop change = RPC, like React
       prev.delete(childName);
@@ -332,6 +342,10 @@ abstract class FiberAgentBase<S extends Record<string, unknown>> extends Agent<G
       // grandchildren. Args + return must be structured-cloneable — DO RPC
       // clones them (COMPAT-REPORT #21).
       const { child, event } = payload.callback;
+      const capability = this.#bindings.get(`subagent:${child}`)?.[event];
+      if (!capability) {
+        throw new Error(`unauthorized agent capability: ${child}.${event}`);
+      }
       const result = await this.#handlers.get(`subagent:${child}`)?.[event]?.(...(payload.args ?? []));
       if (this.#needsReconcile) await this.#requestReconcile();
       return result;
@@ -378,7 +392,7 @@ abstract class FiberAgentBase<S extends Record<string, unknown>> extends Agent<G
 // Root agent: coordinator
 
 // Root props come from the spec's sampleProps (was a per-emit propsJson string).
-const ROOT_PROPS = {} as const;
+const ROOT_PROPS = {};
 
 /**
  * Coordinate work by delegating to a single bound worker tool.
@@ -408,7 +422,7 @@ export class CoordinatorDurable extends FiberAgentBase<RootState> {
    *  runtime this module otherwise targets. See docs/agent-tools-investigation.md. */
   getTools() {
     return {
-      onCall: agentTool(ToolWorkerDurable, { description: Worker.spec.description, inputSchema: Worker.spec.inputSchema }),
+      onCall: agentTool(ToolWorkerDurable, { description: Worker.spec.description ?? "onCall", displayName: Worker.spec.displayName, inputSchema: Worker.spec.inputSchema, outputSchema: Worker.spec.outputSchema }),
     };
   }
 

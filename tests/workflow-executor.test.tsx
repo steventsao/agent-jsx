@@ -83,10 +83,20 @@ describe("runReactiveWorkflow", () => {
       return (
         <>
           {!rootCause && (
-            <subagent name="diagnose" kind="diagnoser" onResult={(r: string) => store.set({ rootCause: r })} />
+            <subagent
+              name="diagnose"
+              kind="diagnoser"
+              __agentBindings={{ finish: { kind: "result" } }}
+              finish={(r: string) => store.set({ rootCause: r })}
+            />
           )}
           {rootCause && !escalated && (
-            <subagent name="escalate" kind="escalator" onResult={(r: string) => store.set({ escalated: r })} />
+            <subagent
+              name="escalate"
+              kind="escalator"
+              __agentBindings={{ finish: { kind: "result" } }}
+              finish={(r: string) => store.set({ escalated: r })}
+            />
           )}
           <prompt>
             <sys p={10}>Handle the incident.</sys>
@@ -117,7 +127,8 @@ describe("runReactiveWorkflow", () => {
         <subagent
           name={`n${count}`}
           kind="spawner"
-          onResult={() => store.set((s) => ({ ...s, count: s.count + 1 }))}
+          __agentBindings={{ advance: { kind: "result" } }}
+          advance={() => store.set((s) => ({ ...s, count: s.count + 1 }))}
         />
       );
     }
@@ -130,5 +141,28 @@ describe("runReactiveWorkflow", () => {
         maxRounds: 3,
       })
     ).rejects.toThrow(/maxRounds|rounds/i);
+  });
+
+  it("never guesses an on* result callback without an explicit binding", async () => {
+    interface S extends Record<string, unknown> {
+      value: string | null;
+    }
+    function NoGrant({ store }: { store: AgentStore<S> }) {
+      return (
+        <subagent
+          name="unguessed"
+          kind="worker"
+          onMystery={(value: string) => store.set({ value })}
+        />
+      );
+    }
+    const result = await runReactiveWorkflow<{ store: AgentStore<S> }, S>({
+      component: NoGrant as never,
+      props: {} as never,
+      initialState: { value: null },
+      delegate: () => "must-not-route",
+    });
+    expect(result.state.value).toBeNull();
+    expect(result.delegated).toEqual(["unguessed"]);
   });
 });

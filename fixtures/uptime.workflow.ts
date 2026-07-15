@@ -52,7 +52,7 @@ export default defineWorkflow({
       // result text is folded back into state through the record's onResult.
       delegate: async (descriptor) => {
         const response = await session.task(
-          `Investigate "${descriptor.stableId}" via the "${descriptor.agent}" agent. Input: ${JSON.stringify(descriptor.input)}.`,
+          `Run "${descriptor.stableId}" with the "${descriptor.agent}" agent. Input: ${JSON.stringify(descriptor.input)}.`,
           { agent: descriptor.agent },
         );
         return response.text;

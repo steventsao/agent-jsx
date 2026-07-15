@@ -14,6 +14,7 @@
  */
 
 import type { AgentHost, HostOp, InfraRecord } from "./types.ts";
+import { resultBindingName } from "./tree.ts";
 
 interface LiveRecord extends InfraRecord {
   /** Restored from a snapshot and not yet rebound by a commit. */
@@ -159,8 +160,9 @@ export class SimHost implements AgentHost {
         const result =
           this.world.subagentResult?.(live, this.t) ??
           `[${name}] investigated ${JSON.stringify(live.config)} → root cause: upstream dependency`;
-        live.handlers.__emit?.(result);
-        live.handlers.onResult?.(result);
+        if (live.bindings?.__emit?.kind === "continuation") live.handlers.__emit?.(result);
+        const resultBinding = resultBindingName(live);
+        if (resultBinding) live.handlers[resultBinding]?.(result);
       },
     });
   }

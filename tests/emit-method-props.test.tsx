@@ -24,4 +24,10 @@ describe("emitted method-prop bindings", () => {
     expect(callbackBranch).toContain("const result = await");
     expect(callbackBranch).toContain("return result;");
   });
+
+  it("generates callback refs only from explicit bindings and rejects ungranted calls", () => {
+    expect(cf).toContain("Object.entries(rec.bindings ?? {})");
+    expect(cf).toContain("capability: capability.kind");
+    expect(cf).toContain("unauthorized agent capability");
+  });
 });

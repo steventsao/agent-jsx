@@ -12,7 +12,7 @@ import { useAgentState } from "../../src/state.ts";
 export const summarizerInput = z.object({ query: z.string().min(1) });
 export const summarizerOutput = z.object({ answer: z.string() });
 
-export interface SummarizerProps extends Record<string, unknown> {
+export interface SummarizerProps {
   // Optional at the composition site (model-provided when filling a tool slot);
   // the inputSchema is the enforced contract. See worker.tsx.
   query?: string;
@@ -32,6 +32,7 @@ export const Summarizer = agentComponent<SummarizerProps, SummarizerState, { ans
   inputSchema: summarizerInput,
   outputSchema: summarizerOutput,
   initialState: { answered: false },
+  capabilities: { onResult: { kind: "result" } },
   sampleProps: { query: "sample", onResult: () => {} },
   impl: ({ query, onResult, store }) => {
     const { answered } = useAgentState(store);

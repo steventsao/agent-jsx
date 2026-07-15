@@ -22,7 +22,7 @@
  * (deployed, the child's post-adoption `schedule(0, …)` wake tick drives it).
  */
 
-import { env, runInDurableObject } from "cloudflare:test";
+import { env, runInDurableObject as runInDurableObjectRaw } from "cloudflare:test";
 import { getAgentByName } from "agents";
 import { describe, expect, it } from "vitest";
 
@@ -39,6 +39,21 @@ declare module "cloudflare:test" {
     CONT_FOLDER: DurableObjectNamespace;
   }
 }
+
+declare global {
+  namespace Cloudflare {
+    interface Env {
+      CONT_ROOT: DurableObjectNamespace;
+      CONT_EMITTER: DurableObjectNamespace;
+      CONT_FOLDER: DurableObjectNamespace;
+    }
+  }
+}
+
+const runInDurableObject = <T>(
+  stub: DurableObjectStub,
+  callback: (agent: AnyAgent) => T | Promise<T>,
+) => runInDurableObjectRaw(stub, (instance) => callback(instance as unknown as AnyAgent));
 
 const PARENT = "cont-main";
 // Child instance names are `${parentName}:${boundaryName}` — the reconcile's

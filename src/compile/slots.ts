@@ -27,6 +27,8 @@ export interface ToolSlotBinding {
   childKind: string;
   /** agentName of the slot PROVIDER — which agent's getTools this belongs to. */
   provider: string;
+  /** JSX host identity retained for deterministic adapters and diagnostics. */
+  stableId: string;
 }
 
 /**
@@ -44,7 +46,12 @@ export function discoverToolSlots(element: unknown): ToolSlotBinding[] {
       for (const [key, value] of Object.entries(rec.config)) {
         if (key === "kind") continue;
         if (isToolSlotHandle(value)) {
-          bindings.push({ toolName: key, childKind: String(rec.config.kind), provider: value.provider });
+          bindings.push({
+            toolName: key,
+            childKind: String(rec.config.kind),
+            provider: value.provider,
+            stableId: rec.name,
+          });
         }
       }
     }

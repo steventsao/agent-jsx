@@ -14,7 +14,7 @@
 import { agentComponent } from "../src/agent-component.tsx";
 import { useAgentState } from "../src/state.ts";
 
-export interface InvestigatorProps extends Record<string, unknown> {
+export interface InvestigatorProps {
   site: string;
   since: number;
   onResult: (result: string) => void | Promise<void>;
@@ -33,6 +33,10 @@ export interface InvestigatorState extends Record<string, unknown> {
 export const Investigator = agentComponent<InvestigatorProps, InvestigatorState>({
   agentName: "investigator",
   initialState: { checked: [] },
+  capabilities: {
+    onResult: { kind: "result" },
+    lookupRunbook: { kind: "method" },
+  },
   sampleProps: { site: "https://example.com", since: 0, onResult: () => {} },
   impl: ({ site, since, onResult, lookupRunbook, store }) => {
     const { checked } = useAgentState(store);

@@ -15,9 +15,11 @@ import {
 import { createStore } from "../../../src/state.ts";
 import { Investigator } from "../../../examples/investigator.tsx";
 import { Worker } from "../../../examples/tool-slot/worker.tsx";
+import { Coordinator } from "../../../examples/tool-slot/coordinator.tsx";
 import { Notetaker } from "../../../examples/think/notetaker.tsx";
 import { Researcher } from "../../../examples/think/researcher.tsx";
 import { analyzeAgent } from "../../../src/compile/graph.ts";
+import { discoverToolSlots } from "../../../src/compile/slots.ts";
 import {
   initialUptimeState,
   UptimeAgent,
@@ -84,6 +86,38 @@ writeFileSync(
   )
 );
 
+// TOOL-SLOT NAME PARITY — Flue resolves session.task by AgentProfile.name, so
+// the `onCall` JSX prop compiles to a validated alias profile named `onCall`.
+copyAgentComponent(
+  new URL("../../../examples/tool-slot/coordinator.tsx", import.meta.url),
+  here("src/agents/coordinator.tsx").pathname,
+  "../generated/runtime"
+);
+const slotComposition = (
+  <Coordinator name="coord">
+    {(handleCall) => <Worker name="w" onCall={handleCall} />}
+  </Coordinator>
+);
+writeFileSync(
+  here("src/generated/coordinator.flue.ts"),
+  emitFlue({
+    spec: Coordinator.spec,
+    model: "openrouter/google/gemini-3.1-flash-lite-preview",
+    componentName: "Coordinator",
+    componentImport: "../agents/coordinator.tsx",
+    analysis: analyzeAgent({
+      spec: Coordinator.spec,
+      exportName: "Coordinator",
+      importPath: "../agents/coordinator.tsx",
+    }),
+    childProfiles: [
+      { importPath: "./tool-worker.flue.ts", profileExportName: flueProfileExportName("tool-worker") },
+    ],
+    toolSlots: discoverToolSlots(slotComposition),
+    runtimeImport: "./runtime",
+  })
+);
+
 // PHASE 3 — the <tool> gap-closer: a ROOT agent (Notetaker) with a STATIC
 // <tool> (saveNote) emits `tools: [defineTool(...)]` on its defineAgent config.
 // Importing the module + calling initialize() runs flue's real defineTool
@@ -136,5 +170,5 @@ writeFileSync(
   })
 );
 console.log(
-  "generated: src/generated/{uptime,investigator,notetaker,researcher}.flue.ts + uptime.workflow.ts + runtime/"
+  "generated: src/generated/{uptime,investigator,notetaker,researcher,coordinator}.flue.ts + uptime.workflow.ts + runtime/"
 );

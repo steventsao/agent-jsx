@@ -14,7 +14,7 @@ import { agentComponent } from "../../src/agent-component.tsx";
 import { useAgentState } from "../../src/state.ts";
 import { b64ToBytes, extractTextLayer, type Bbox } from "../../targets/pdf/core/extract.ts";
 
-export interface BboxExtractorProps extends Record<string, unknown> {
+export interface BboxExtractorProps {
   regionId: string;
   bbox: Bbox;
   getPdf: () => string | Promise<string>;
@@ -28,6 +28,10 @@ export interface BboxExtractorState extends Record<string, unknown> {
 export const BboxExtractor = agentComponent<BboxExtractorProps, BboxExtractorState>({
   agentName: "bbox-extractor",
   initialState: { extracted: null },
+  capabilities: {
+    getPdf: { kind: "method" },
+    onSegment: { kind: "callback" },
+  },
   sampleProps: {
     regionId: "sample",
     bbox: { x0: 0, y0: 0, x1: 1, y1: 1 },

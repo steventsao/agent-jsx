@@ -28,16 +28,17 @@ import {
   flueChildTargetDiagnostics,
   formatTargetDiagnosticsForComment,
 } from "./target-diagnostics.ts";
-import type { AgentSpec } from "../agent-component.tsx";
+import type { AnyAgentSpec } from "../agent-component.tsx";
 import type { Analysis } from "./analyze.ts";
 import type { ChildAgentSpec } from "./emit-cloudflare.ts";
+import type { ToolSlotBinding } from "./slots.ts";
 
 export interface FlueEmitOptions {
   /** The parent agent's spec — the SAME `agentComponent(spec)` the cloudflare
    *  emitter consumes. Supplies agentName, initialState, sampleProps (the flue
    *  task input / resting props), impl (resting render), and the getPrompt seam.
    *  The resting instructions are derived from the spec, not a passed element. */
-  spec: AgentSpec;
+  spec: AnyAgentSpec;
   model: string;
   /** Export name + import path of the agentComponent — imported for spawnPlan's
    *  `.spec.impl` and structural state typing. */
@@ -46,6 +47,9 @@ export interface FlueEmitOptions {
   analysis: Analysis;
   /** Generated child profile modules this parent should expose to flue task delegation. */
   childProfiles?: { importPath: string; profileExportName: string }[];
+  /** Explicit tool-slot bindings. Flue indexes subagents only by profile.name,
+   *  so each prop-key capability is emitted as a validated alias profile. */
+  toolSlots?: ToolSlotBinding[];
   promptBudget?: number;
   /** Rewrites the generated runtime imports off `../../src` (e.g. "./runtime"). */
   runtimeImport?: string;
@@ -70,7 +74,12 @@ export interface FlueChildOptions {
 }
 
 export function flueProfileExportName(agentName: string): string {
-  return `${agentName.replace(/[^A-Za-z0-9_$]/g, "_")}Profile`;
+  return `${flueIdentifier(agentName)}Profile`;
+}
+
+function flueIdentifier(name: string): string {
+  const sanitized = name.replace(/[^A-Za-z0-9_$]/g, "_");
+  return /^[A-Za-z_$]/.test(sanitized) ? sanitized : `_${sanitized}`;
 }
 
 /**
@@ -149,7 +158,7 @@ import { ${child.exportName} } from "${child.importPath}";
     ? `
 // State derived structurally from the component spec.
 type State = typeof ${child.exportName}.spec.initialState & Record<string, unknown>;
-const PROPS = ${JSON.stringify(spec.sampleProps ?? {})} as const;
+const PROPS = ${JSON.stringify(spec.sampleProps ?? {})};
 
 /**
  * Dynamic residue (${dynamicSubagents.map((r) => `${r.kind}:${r.name}`).join(", ")}): this profile fans out one
@@ -172,7 +181,15 @@ export function spawnPlan(input: Record<string, unknown> = PROPS, state: State =
     .filter((r) => r.kind === "subagent" && !STATIC_SUBAGENTS.has(r.name))
     .map((r) => {
       const { kind, ...childInput } = r.config;
-      return { stableId: r.name, agent: String(kind), input: childInput, emits: "__emit" in r.handlers };
+      return {
+        stableId: r.name,
+        agent: String(kind),
+        input: childInput,
+        emits: r.bindings?.__emit?.kind === "continuation",
+        bindings: r.bindings ?? {},
+        resultBinding: Object.entries(r.bindings ?? {}).find(([, b]) => b.kind === "result")?.[0] ?? null,
+        target: r.target ?? null,
+      };
     });
 }
 `
@@ -200,6 +217,7 @@ export function emitFlue(o: FlueEmitOptions): string {
   const rt = o.runtimeImport ?? "../../src";
   const spec = o.spec;
   const childProfiles = o.childProfiles ?? [];
+  const slotBindings = (o.toolSlots ?? []).filter((binding) => binding.provider === spec.agentName);
   // Resting instructions derived from the spec: the <prompt> tree rendered at
   // the initial state if present, else the imperative getPrompt seam, else "".
   const restingRoots = evaluateComponent(spec.impl, {
@@ -227,9 +245,10 @@ export function emitFlue(o: FlueEmitOptions): string {
         seenTools.add(rec.name);
         staticTools.push({ name: rec.name, description: String(rec.config.description ?? "") });
       }
-  const flueImport = staticTools.length
-    ? `import { defineAgent, defineTool } from "@flue/runtime";`
-    : `import { defineAgent } from "@flue/runtime";`;
+  const flueImports = ["defineAgent"];
+  if (staticTools.length) flueImports.push("defineTool");
+  if (slotBindings.length) flueImports.push("defineAgentProfile");
+  const flueImport = `import { ${flueImports.join(", ")} } from "@flue/runtime";`;
   const toolsBlock = staticTools.length
     ? `  // Static <tool> records → flue tools (the flue analogue of think mode's
   // getTools). defineTool.input is omitted (the <tool> intrinsic carries no input
@@ -277,9 +296,50 @@ ${staticTools
   const childImports = childProfiles
     .map((c) => `import { ${c.profileExportName} } from "${c.importPath}";`)
     .join("\n");
+  const aliases = slotBindings.map((binding) => {
+    const source = childProfiles.find(
+      (profile) => profile.profileExportName === flueProfileExportName(binding.childKind)
+    );
+    if (!source) {
+      throw new Error(`flue tool slot: no child profile registered for kind "${binding.childKind}"`);
+    }
+    return {
+      binding,
+      source,
+      alias: `${flueIdentifier(binding.toolName)}SubagentProfile`,
+    };
+  });
+  const aliasBlock = aliases.length
+    ? `// Flue resolves session.task({ agent }) strictly by AgentProfile.name.
+// Generate one validated alias per explicit JSX prop-key capability so the
+// model-visible grant is the binding name, not an accidental child kind.
+${aliases
+  .map(
+    ({ binding, source, alias }) =>
+      `export const ${alias} = defineAgentProfile({ ...${source.profileExportName}, name: ${JSON.stringify(binding.toolName)} });`
+  )
+  .join("\n")}
+`
+    : "";
+  const slottedExports = new Set(aliases.map((alias) => alias.source.profileExportName));
+  const plainKinds = new Set(
+    [...o.analysis.static, ...o.analysis.dynamic]
+      .filter((record) => record.kind === "subagent")
+      .map((record) => String(record.config.kind))
+  );
+  const roster = [
+    ...childProfiles
+      .filter(
+        (profile) =>
+          !slottedExports.has(profile.profileExportName) ||
+          [...plainKinds].some((kind) => flueProfileExportName(kind) === profile.profileExportName)
+      )
+      .map((profile) => profile.profileExportName),
+    ...aliases.map((alias) => alias.alias),
+  ];
   const subagentsLine =
-    childProfiles.length > 0
-      ? `  // Declared subagent profiles are flue's binding table for session.task(..., { agent }).\n  subagents: [${childProfiles.map((c) => c.profileExportName).join(", ")}],\n`
+    roster.length > 0
+      ? `  // Explicit subagent/capability roster for session.task(..., { agent }).\n  subagents: [${roster.join(", ")}],\n`
       : "";
 
   const module = `// GENERATED by agent-jsx (compile target: flue). Do not edit.
@@ -297,11 +357,12 @@ import { collectInfra } from "${rt}/tree.ts";
 import { createStore, withOutputs } from "${rt}/store.ts";
 import { ${o.componentName} } from "${o.componentImport}";
 ${childImports}
+${aliasBlock}
 
 // State + props derived structurally from the component spec (no state-type
 // string, no per-emit propsJson): the spec is the single analyzed source.
 type State = typeof ${o.componentName}.spec.initialState & Record<string, unknown>;
-const PROPS = ${JSON.stringify(spec.sampleProps ?? {})} as const;
+const PROPS = ${JSON.stringify(spec.sampleProps ?? {})};
 
 // defineAgent's initializer returns an AgentRuntimeConfig (model/instructions/
 // tools/subagents/…). No \`name\` field — flue derives the agent name from the
@@ -337,7 +398,15 @@ ${staticDecl}export function spawnPlan(state: State) {
     .filter((r) => r.kind === "subagent"${staticFilter})
     .map((r) => {
       const { kind, ...input } = r.config;
-      return { stableId: r.name, agent: String(kind), input, emits: "__emit" in r.handlers };
+      return {
+        stableId: r.name,
+        agent: String(kind),
+        input,
+        emits: r.bindings?.__emit?.kind === "continuation",
+        bindings: r.bindings ?? {},
+        resultBinding: Object.entries(r.bindings ?? {}).find(([, b]) => b.kind === "result")?.[0] ?? null,
+        target: r.target ?? null,
+      };
     });
 }
 `;
@@ -351,7 +420,7 @@ export interface FlueWorkflowOptions {
   /** The workflow agent's spec — supplies agentName (the agent binding),
    *  initialState (the input fallback), sampleProps (props), and impl (the
    *  component the reactive loop re-evaluates each round). */
-  spec: AgentSpec;
+  spec: AnyAgentSpec;
   componentName: string;
   /** Import path to the .tsx component (bun/flue resolve a .ts→.tsx import). */
   componentImport: string;
@@ -388,7 +457,7 @@ export interface FlueWorkflowOptions {
 export function emitFlueWorkflow(o: FlueWorkflowOptions): string {
   const rt = o.runtimeImport ?? "../../src";
   const spec = o.spec;
-  const agentBinding = `${spec.agentName}Agent`;
+  const agentBinding = `${flueIdentifier(spec.agentName)}Agent`;
 
   const module = `// GENERATED by agent-jsx (compile target: flue, reactive workflow). Do not edit.
 // Plain .ts on purpose: flue's discoverModules excludes .tsx — a discovered
@@ -444,7 +513,7 @@ export default defineWorkflow({
       // result text is folded back into state through the record's onResult.
       delegate: async (descriptor) => {
         const response = await session.task(
-          \`Investigate "\${descriptor.stableId}" via the "\${descriptor.agent}" agent. Input: \${JSON.stringify(descriptor.input)}.\`,
+          \`Run "\${descriptor.stableId}" with the "\${descriptor.agent}" agent. Input: \${JSON.stringify(descriptor.input)}.\`,
           { agent: descriptor.agent },
         );
         return response.text;

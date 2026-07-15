@@ -66,11 +66,11 @@ const emitCf = (
 describe("tool-slot mapping — discovery", () => {
   it("reads the binding: prop key → tool name, child kind, provider", () => {
     expect(discoverToolSlots(withWorker())).toEqual([
-      { toolName: "onCall", childKind: "tool-worker", provider: "coordinator" },
+      { toolName: "onCall", childKind: "tool-worker", provider: "coordinator", stableId: "w" },
     ]);
     // the SAME coordinator, a different child filling the same slot
     expect(discoverToolSlots(withSummarizer())).toEqual([
-      { toolName: "onCall", childKind: "tool-summarizer", provider: "coordinator" },
+      { toolName: "onCall", childKind: "tool-summarizer", provider: "coordinator", stableId: "s" },
     ]);
   });
 });
@@ -81,14 +81,14 @@ describe("tool-slot mapping — the emitted getTools block (agentTools mode)", (
     expect(cf).toContain('import { agentTool } from "agents/agent-tools";');
     expect(cf).toContain("getTools() {");
     expect(cf).toContain(
-      "onCall: agentTool(ToolWorkerDurable, { description: Worker.spec.description, inputSchema: Worker.spec.inputSchema }),"
+      "onCall: agentTool(ToolWorkerDurable, { description: Worker.spec.description ?? \"onCall\", displayName: Worker.spec.displayName, inputSchema: Worker.spec.inputSchema, outputSchema: Worker.spec.outputSchema }),"
     );
   });
 
   it("the SAME coordinator, composed with summarizer, binds the summarizer instead", () => {
     const cf = emitCf(Summarizer, "Summarizer", withSummarizer);
     expect(cf).toContain(
-      "onCall: agentTool(ToolSummarizerDurable, { description: Summarizer.spec.description, inputSchema: Summarizer.spec.inputSchema }),"
+      "onCall: agentTool(ToolSummarizerDurable, { description: Summarizer.spec.description ?? \"onCall\", displayName: Summarizer.spec.displayName, inputSchema: Summarizer.spec.inputSchema, outputSchema: Summarizer.spec.outputSchema }),"
     );
     expect(cf).not.toContain("ToolWorkerDurable");
   });
@@ -134,7 +134,7 @@ describe("tool-slot mapping — the slot handle flows through evaluate parity", 
 });
 
 describe("tool-slot mapping — flue exposes the same child as a native subagent roster", () => {
-  const flueFor = (kind: string) =>
+  const flueFor = (kind: string, composition: () => unknown) =>
     emitFlue({
       spec: Coordinator.spec,
       model: "openrouter/google/gemini-3.1-flash-lite-preview",
@@ -143,16 +143,18 @@ describe("tool-slot mapping — flue exposes the same child as a native subagent
       analysis: coordinatorAnalysis(),
       childProfiles: [{ importPath: `./${kind}.flue.ts`, profileExportName: flueProfileExportName(kind) }],
       runtimeImport: "./runtime",
+      toolSlots: discoverToolSlots(composition()),
     });
 
   it("worker composition → subagents: [tool_workerProfile]", () => {
-    const flue = flueFor("tool-worker");
+    const flue = flueFor("tool-worker", withWorker);
     expect(flue).toContain('import { tool_workerProfile } from "./tool-worker.flue.ts";');
-    expect(flue).toContain("subagents: [tool_workerProfile],");
+    expect(flue).toContain('onCallSubagentProfile = defineAgentProfile({ ...tool_workerProfile, name: "onCall" })');
+    expect(flue).toContain("subagents: [onCallSubagentProfile],");
   });
 
   it("summarizer composition → subagents: [tool_summarizerProfile] (same declaration, different fill)", () => {
-    const flue = flueFor("tool-summarizer");
-    expect(flue).toContain("subagents: [tool_summarizerProfile],");
+    const flue = flueFor("tool-summarizer", withSummarizer);
+    expect(flue).toContain("subagents: [onCallSubagentProfile],");
   });
 });

@@ -16,6 +16,12 @@
 
 export type InfraKind = "sensor" | "schedule" | "subagent" | "tool" | "task";
 
+export type InfraCapabilityKind = "callback" | "method" | "result" | "continuation";
+
+export interface InfraCapabilityBinding {
+  kind: InfraCapabilityKind;
+}
+
 export interface InfraRecord {
   kind: InfraKind;
   /** Stable identity across renders and process restarts. Required. */
@@ -24,6 +30,13 @@ export interface InfraRecord {
   config: Record<string, unknown>;
   /** Live callbacks, rebound every commit. Never serialized. */
   handlers: Record<string, (...args: any[]) => unknown>;
+  /** Explicit cross-agent grants, keyed by the exact function prop name. This
+   *  metadata is neither child input nor durable config. */
+  bindings?: Record<string, InfraCapabilityBinding>;
+  /** Live agent-class identity for local adapters that bind implementations by
+   *  typed class rather than by the serialized `kind` string. Compiler-owned,
+   *  never persisted or sent across a runtime boundary. */
+  target?: object;
 }
 
 export type HostOp =
@@ -73,6 +86,13 @@ export interface ScheduleProps {
 export interface SubagentProps {
   name: string;
   kind: string;
+  /** Compiler-owned capability ACL. Raw intrinsic users may set this directly;
+   *  agentComponent boundaries derive it exhaustively from their typed spec. */
+  __agentBindings?: Record<string, InfraCapabilityBinding>;
+  /** Compiler-owned live class identity. It is collected outside `config`, so
+   *  provider credentials/adapters can key a typed registry without exposing
+   *  or serializing implementation details. */
+  __agentTarget?: object;
   /** Everything else is the child's contract: serializable values become the
    *  child's props (pushed on change); functions become callbacks the child
    *  invokes (compiled to RPC back to the parent). Prefer composing via

@@ -25,6 +25,7 @@ const RUNTIME_FILES: ReadonlyArray<readonly [src: string, dest: string]> = [
   ["../store.ts", "store.ts"],
   ["../prompt.ts", "prompt.ts"],
   ["../types.ts", "types.ts"],
+  ["../intrinsics.d.ts", "intrinsics.d.ts"],
   ["../agent-component.tsx", "agent-component.tsx"],
   ["../workflow-executor.ts", "workflow-executor.ts"],
   ["./evaluate.ts", "compile/evaluate.ts"],

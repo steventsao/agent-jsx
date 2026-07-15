@@ -15,10 +15,11 @@ import { ResearchDesk } from "../agents/research-desk.tsx";
 import { tool_workerProfile } from "./tool-worker.flue.ts";
 import { tool_summarizerProfile } from "./tool-summarizer.flue.ts";
 
+
 // State + props derived structurally from the component spec (no state-type
 // string, no per-emit propsJson): the spec is the single analyzed source.
 type State = typeof ResearchDesk.spec.initialState & Record<string, unknown>;
-const PROPS = {} as const;
+const PROPS = {};
 
 // defineAgent's initializer returns an AgentRuntimeConfig (model/instructions/
 // tools/subagents/…). No `name` field — flue derives the agent name from the
@@ -26,7 +27,7 @@ const PROPS = {} as const;
 export default defineAgent(() => ({
   model: "openrouter/google/gemini-3.1-flash-lite-preview",
   instructions: "[system] Research desk — delegate a query to both a researcher and a summarizer.\nidle",
-  // Declared subagent profiles are flue's binding table for session.task(..., { agent }).
+  // Explicit subagent/capability roster for session.task(..., { agent }).
   subagents: [tool_workerProfile, tool_summarizerProfile],
 
   // No static tools: the component's <tool> is state-gated (e.g. page-oncall
@@ -60,6 +61,14 @@ export function spawnPlan(state: State) {
     .filter((r) => r.kind === "subagent")
     .map((r) => {
       const { kind, ...input } = r.config;
-      return { stableId: r.name, agent: String(kind), input, emits: "__emit" in r.handlers };
+      return {
+        stableId: r.name,
+        agent: String(kind),
+        input,
+        emits: r.bindings?.__emit?.kind === "continuation",
+        bindings: r.bindings ?? {},
+        resultBinding: Object.entries(r.bindings ?? {}).find(([, b]) => b.kind === "result")?.[0] ?? null,
+        target: r.target ?? null,
+      };
     });
 }

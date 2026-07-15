@@ -86,7 +86,7 @@ describe("emitThink — child boundaries become agentTools", () => {
     expect(agents).toContain('import { agentTool } from "agents/agent-tools";');
     expect(agents).toContain("override getTools(): ToolSet {");
     expect(agents).toContain(
-      "onCall: agentTool(ToolWorkerDurable, { description: Worker.spec.description, inputSchema: Worker.spec.inputSchema }),"
+      "onCall: agentTool(ToolWorkerDurable, { description: Worker.spec.description ?? \"onCall\", displayName: Worker.spec.displayName, inputSchema: Worker.spec.inputSchema, outputSchema: Worker.spec.outputSchema }),"
     );
   });
 
@@ -100,9 +100,15 @@ describe("emitThink — child boundaries become agentTools", () => {
   it("a PLAIN nested child → agentTool NAMED BY KIND", () => {
     const { agents } = notetakerThink();
     expect(agents).toContain(
-      "researcher: agentTool(ResearcherDurable, { description: Researcher.spec.description, inputSchema: Researcher.spec.inputSchema }),"
+      "researcher: agentTool(ResearcherDurable, { description: Researcher.spec.description ?? \"researcher\", displayName: Researcher.spec.displayName, inputSchema: Researcher.spec.inputSchema, outputSchema: Researcher.spec.outputSchema }),"
     );
     expect(agents).toContain("export class ResearcherDurable extends ThinkAgentBase<");
+  });
+
+  it("emits native structured output parsing when the child has outputSchema", () => {
+    const { agents } = coordinatorThink();
+    expect(agents).toContain("protected override getAgentToolOutput(runId: string): unknown");
+    expect(agents).toContain("Worker.spec.outputSchema?.parse(value)");
   });
 });
 

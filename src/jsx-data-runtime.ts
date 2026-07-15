@@ -10,6 +10,14 @@
  * evaluator (and any element authored under the dev/React transform) agrees.
  */
 
+import type {
+  ScheduleProps,
+  SensorProps,
+  SubagentProps,
+  TaskProps,
+  ToolProps,
+} from "./types.ts";
+
 export const Fragment: unique symbol = Symbol.for("react.fragment") as never;
 
 export interface DataElement {
@@ -35,14 +43,24 @@ export function jsxDEV(type: unknown, props: Record<string, unknown> | null, key
   return jsx(type, props, key);
 }
 
-// Minimal JSX namespace so the package tsconfig can typecheck against this
-// import source. Intrinsics are typed loosely here — authoring-time safety
-// lives in the dev environment (real React types + intrinsics.d.ts).
+// JSX namespace for generated packages. It preserves the authored intrinsic
+// contracts and `key` checking while returning plain DataElements.
 export namespace JSX {
   export type Element = DataElement;
   export type ElementType = unknown;
+  export interface IntrinsicAttributes {
+    key?: unknown;
+  }
   export interface IntrinsicElements {
-    [name: string]: Record<string, unknown>;
+    sensor: SensorProps & IntrinsicAttributes;
+    schedule: ScheduleProps & IntrinsicAttributes;
+    subagent: SubagentProps & IntrinsicAttributes;
+    tool: ToolProps & IntrinsicAttributes;
+    task: TaskProps & IntrinsicAttributes;
+    prompt: { children?: unknown } & IntrinsicAttributes;
+    sys: { p?: number; prel?: number; children?: unknown } & IntrinsicAttributes;
+    msg: { p?: number; prel?: number; children?: unknown } & IntrinsicAttributes;
+    scope: { p?: number; prel?: number; children?: unknown } & IntrinsicAttributes;
   }
   export interface ElementChildrenAttribute {
     children: {};

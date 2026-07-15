@@ -31,8 +31,7 @@
  * alongside the rest of that set.
  */
 
-import type { ReactNode } from "react"; // type-only; erases, never bundled
-import { collectInfra, collectPrompt, type HostNode } from "./tree.ts";
+import { collectInfra, collectPrompt, resultBindingName, type HostNode } from "./tree.ts";
 import { renderPrompt } from "./prompt.ts";
 import { createStore, withOutputs, type AgentStore, type OutputsContext } from "./store.ts";
 import { evaluateComponent } from "./compile/evaluate.ts";
@@ -55,16 +54,51 @@ export interface SpawnDescriptor {
    *  should resolve a structured output (`{ output }`) that sets the parent's
    *  reserved slot and expands the continuation, not just a report string. */
   emits: boolean;
+  /** Exact function-prop ACL generated at the JSX boundary. */
+  bindings: NonNullable<InfraRecord["bindings"]>;
+  /** The explicit callback that receives a plain delegated result, if any. */
+  resultBinding: string | null;
+  /** Live typed agent-class identity for same-process adapters. This is not
+   *  serialized; cross-runtime targets continue to route by `agent`. */
+  target: object | null;
 }
 
-/** What a `delegate` may resolve: a plain string (folded via the boundary's
- *  onResult callback) OR a structured `{ output }` for a continuation boundary
- *  (routed into the reserved slot via the boundary's `__emit`, expanding its
- *  grandchildren next round). */
-export type DelegateResult = string | { output: unknown };
+/** What a `delegate` may resolve. Ordinary values are folded through the
+ * boundary callback (`onResult`, `onTurn`, etc.); a structured `{ output }`
+ * value is reserved for a render-prop continuation and routes through
+ * `__emit`. Flue normally supplies text, while an interactive Worker may
+ * already have parsed a provider's structured JSON response. */
+export type DelegateResult = unknown;
 
 function isStructuredOutput(r: DelegateResult): r is { output: unknown } {
   return typeof r === "object" && r !== null && "output" in r;
+}
+
+function outputsContextFor<S extends Record<string, unknown>>(store: AgentStore<S>): OutputsContext {
+  return {
+    get outputs() {
+      return (store.get() as { __outputs?: Record<string, unknown> }).__outputs ?? {};
+    },
+    setOutput: (name, output) => {
+      store.set(
+        (s) =>
+          ({
+            ...s,
+            __outputs: { ...((s as { __outputs?: Record<string, unknown> }).__outputs ?? {}), [name]: output },
+          }) as S
+      );
+    },
+  };
+}
+
+async function routeDelegateResult(record: InfraRecord, result: DelegateResult): Promise<void> {
+  if (isStructuredOutput(result)) {
+    if (record.bindings?.__emit?.kind !== "continuation") return;
+    await record.handlers.__emit?.(result.output);
+    return;
+  }
+  const resultBinding = resultBindingName(record);
+  if (resultBinding) await record.handlers[resultBinding]?.(result);
 }
 
 export interface RunReactiveWorkflowOptions<
@@ -72,7 +106,7 @@ export interface RunReactiveWorkflowOptions<
   S extends Record<string, unknown>,
 > {
   /** The agent component. Called only inside `withStaticEval` (never directly). */
-  component: (props: P) => ReactNode;
+  component: (props: P) => unknown;
   /** Component props minus `store` — the executor supplies the bound store. */
   props: Omit<P, "store">;
   /** State the workflow enters at (what the sensor turn produced). */
@@ -102,8 +136,71 @@ export interface ReactiveWorkflowResult<S> {
   prompt: string;
 }
 
+export interface RunReactiveStepOptions<
+  P extends { store: AgentStore<S> },
+  S extends Record<string, unknown>,
+> {
+  component: (props: P) => unknown;
+  props: Omit<P, "store">;
+  initialState: S;
+  delegate: (descriptor: SpawnDescriptor) => DelegateResult | Promise<DelegateResult>;
+  promptBudget?: number;
+}
+
+export interface ReactiveStepResult<S> {
+  state: S;
+  descriptor: SpawnDescriptor | null;
+  prompt: string;
+}
+
 const DEFAULT_MAX_ROUNDS = 100;
 const DEFAULT_PROMPT_BUDGET = 400;
+
+/** Execute at most one currently rendered subagent boundary. This is the
+ * interactive counterpart to `runReactiveWorkflow`: Workers and UIs can make
+ * one model move, persist state, paint, then call again for the next turn. */
+export async function runReactiveStep<
+  P extends { store: AgentStore<S> },
+  S extends Record<string, unknown>,
+>(opts: RunReactiveStepOptions<P, S>): Promise<ReactiveStepResult<S>> {
+  const store = createStore<S>(opts.initialState);
+  const ctx = outputsContextFor(store);
+  const evaluate = (): HostNode[] =>
+    withOutputs(ctx, () => evaluateComponent(opts.component, { ...opts.props, store } as P));
+
+  const roots = evaluate();
+  const records = roots.flatMap((root) => collectInfra(root));
+  const record = records.find((candidate) => candidate.kind === "subagent");
+  if (!record) {
+    return {
+      state: store.get(),
+      descriptor: null,
+      prompt: renderPrompt(collectPrompt(roots), opts.promptBudget ?? DEFAULT_PROMPT_BUDGET).text,
+    };
+  }
+
+  const { kind, ...input } = record.config;
+  const descriptor: SpawnDescriptor = {
+    stableId: record.name,
+    agent: String(kind),
+    input,
+    emits: record.bindings?.__emit?.kind === "continuation",
+    bindings: record.bindings ?? {},
+    resultBinding: resultBindingName(record),
+    target: record.target ?? null,
+  };
+  await routeDelegateResult(record, await opts.delegate(descriptor));
+
+  const finalRoots = evaluate();
+  return {
+    state: store.get(),
+    descriptor,
+    prompt: renderPrompt(
+      collectPrompt(finalRoots),
+      opts.promptBudget ?? DEFAULT_PROMPT_BUDGET,
+    ).text,
+  };
+}
 
 export async function runReactiveWorkflow<
   P extends { store: AgentStore<S> },
@@ -120,20 +217,7 @@ export async function runReactiveWorkflow<
   // Continuation-outputs context backed by the same store's reserved __outputs
   // slot. A boundary's __emit (from a structured delegate result) writes here;
   // the next round's evaluate reads it LIVE and expands the continuation.
-  const ctx: OutputsContext = {
-    get outputs() {
-      return (store.get() as { __outputs?: Record<string, unknown> }).__outputs ?? {};
-    },
-    setOutput: (name, output) => {
-      store.set(
-        (s) =>
-          ({
-            ...s,
-            __outputs: { ...((s as { __outputs?: Record<string, unknown> }).__outputs ?? {}), [name]: output },
-          }) as S
-      );
-    },
-  };
+  const ctx = outputsContextFor(store);
   const evaluate = (): HostNode[] =>
     withOutputs(ctx, () => evaluateComponent(opts.component, { ...opts.props, store } as P));
 
@@ -167,7 +251,10 @@ export async function runReactiveWorkflow<
         stableId: rec.name,
         agent: String(kind),
         input,
-        emits: "__emit" in rec.handlers,
+        emits: rec.bindings?.__emit?.kind === "continuation",
+        bindings: rec.bindings ?? {},
+        resultBinding: resultBindingName(rec),
+        target: rec.target ?? null,
       };
       delegated.push(rec.name);
       seen.add(rec.name);
@@ -177,8 +264,7 @@ export async function runReactiveWorkflow<
       // slot via __emit → the continuation expands next round (grandchild
       // descriptors). A plain string folds through the record's own onResult
       // (the callback prop realized). Both mutate state and drive the next round.
-      if (isStructuredOutput(result)) rec.handlers.__emit?.(result.output);
-      else rec.handlers.onResult?.(result);
+      await routeDelegateResult(rec, result);
     }
     rounds++;
   }

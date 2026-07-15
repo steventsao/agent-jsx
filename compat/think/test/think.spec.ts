@@ -19,6 +19,7 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { getAgentByName } from "agents";
 import { describe, expect, it } from "vitest";
+import type { LanguageModel } from "ai";
 
 type ThinkAgent = {
   state: Record<string, unknown>;
@@ -33,30 +34,136 @@ declare module "cloudflare:test" {
   }
 }
 
+declare global {
+  namespace Cloudflare {
+    interface Env {
+      COORDINATOR: DurableObjectNamespace;
+      TOOL_WORKER: DurableObjectNamespace;
+    }
+  }
+}
+
 const coordinator = async () =>
   (await getAgentByName(env.COORDINATOR as never, "coord")) as never as DurableObjectStub;
 const worker = async () =>
   (await getAgentByName(env.TOOL_WORKER as never, "w")) as never as DurableObjectStub;
 
+function structuredChildModel(): LanguageModel {
+  return {
+    specificationVersion: "v3",
+    provider: "test",
+    modelId: "structured-child",
+    supportedUrls: {},
+    doGenerate() {
+      throw new Error("doGenerate is not used by Think's streaming turn");
+    },
+    async doStream() {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "stream-start", warnings: [] });
+          controller.enqueue({ type: "text-start", id: "answer" });
+          controller.enqueue({
+            type: "text-delta",
+            id: "answer",
+            delta: '{"answer":"native agentTool result"}',
+          });
+          controller.enqueue({ type: "text-end", id: "answer" });
+          controller.enqueue({
+            type: "finish",
+            finishReason: "stop",
+            usage: { inputTokens: 4, outputTokens: 4 },
+          });
+          controller.close();
+        },
+      });
+      return { stream };
+    },
+  } as LanguageModel;
+}
+
+function parentToolCallingModel(): LanguageModel {
+  let calls = 0;
+  return {
+    specificationVersion: "v3",
+    provider: "test",
+    modelId: "parent-tool-caller",
+    supportedUrls: {},
+    doGenerate() {
+      throw new Error("doGenerate is not used by Think's streaming turn");
+    },
+    async doStream(options: Record<string, unknown>) {
+      calls++;
+      const prompt = JSON.stringify(options.prompt ?? []);
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue({ type: "stream-start", warnings: [] });
+          if (calls === 1) {
+            controller.enqueue({
+              type: "tool-call",
+              toolCallId: "stable-onCall-1",
+              toolName: "onCall",
+              input: JSON.stringify({ query: "typed bindings" }),
+            });
+            controller.enqueue({
+              type: "finish",
+              finishReason: "tool-calls",
+              usage: { inputTokens: 4, outputTokens: 4 },
+            });
+          } else {
+            if (!prompt.includes("native agentTool result")) {
+              controller.error(new Error(`parent did not receive structured child output: ${prompt}`));
+              return;
+            }
+            controller.enqueue({ type: "text-start", id: "parent-answer" });
+            controller.enqueue({
+              type: "text-delta",
+              id: "parent-answer",
+              delta: "parent received native agentTool result",
+            });
+            controller.enqueue({ type: "text-end", id: "parent-answer" });
+            controller.enqueue({
+              type: "finish",
+              finishReason: "stop",
+              usage: { inputTokens: 4, outputTokens: 4 },
+            });
+          }
+          controller.close();
+        },
+      });
+      return { stream };
+    },
+  } as LanguageModel;
+}
+
 describe("generated THINK classes on real @cloudflare/think + agents/agent-tools", () => {
   it("boots both Think subclasses as durable objects", async () => {
     // Reachable stub via getAgentByName (the production path) + an in-DO read =
     // the class constructed and Agent state initialised, on the real 0.17 stack.
-    const turns = await runInDurableObject(await coordinator(), (a: ThinkAgent) => a.state?.turns);
+    const turns = await runInDurableObject(
+      await coordinator(),
+      (instance) => (instance as unknown as ThinkAgent).state?.turns,
+    );
     expect(turns).toBe(0); // Coordinator.spec.initialState
-    const answered = await runInDurableObject(await worker(), (a: ThinkAgent) => a.state?.answered);
+    const answered = await runInDurableObject(
+      await worker(),
+      (instance) => (instance as unknown as ThinkAgent).state?.answered,
+    );
     expect(answered).toBe(false); // Worker.spec.initialState
   });
 
   it("getSystemPrompt() renders the component's context window over state", async () => {
-    const prompt = await runInDurableObject(await coordinator(), (a: ThinkAgent) => a.getSystemPrompt());
+    const prompt = await runInDurableObject(
+      await coordinator(),
+      (instance) => (instance as unknown as ThinkAgent).getSystemPrompt(),
+    );
     // From Coordinator's <sys>/<msg> (priompt-rendered), not Think's default.
     expect(prompt).toContain("Coordinate the task");
     expect(prompt).toContain("turns so far");
   });
 
   it("getTools() registers the slot child as an agentTool NAMED BY THE PROP KEY", async () => {
-    const info = await runInDurableObject(await coordinator(), (a: ThinkAgent) => {
+    const info = await runInDurableObject(await coordinator(), (instance) => {
+      const a = instance as unknown as ThinkAgent;
       const tools = a.getTools();
       return {
         keys: Object.keys(tools),
@@ -72,7 +179,31 @@ describe("generated THINK classes on real @cloudflare/think + agents/agent-tools
 
   it("a bare Think (no getModel) exposes an empty getTools on the leaf child", async () => {
     // ToolWorkerDurable is a leaf → getTools inherits Think's {} default.
-    const keys = await runInDurableObject(await worker(), (a: ThinkAgent) => Object.keys(a.getTools()));
+    const keys = await runInDurableObject(
+      await worker(),
+      (instance) => Object.keys((instance as unknown as ThinkAgent).getTools()),
+    );
     expect(keys).toEqual([]);
+  });
+
+  it("executes the generated native agentTool and returns schema-validated child output", async () => {
+    // Supply the test-only child model on the live generated class. Production
+    // consumers override getModel the same way; the emitted binding stays the
+    // exact Coordinator.getTools() -> agentTool(ToolWorkerDurable, ...) path.
+    await runInDurableObject(await worker(), (instance) => {
+      (Object.getPrototypeOf(instance) as { getModel: () => LanguageModel }).getModel = structuredChildModel;
+    });
+
+    const messages = await runInDurableObject(await coordinator(), async (instance) => {
+      const agent = instance as unknown as ThinkAgent & {
+        getModel: () => LanguageModel;
+        runTurn(options: { input: string; mode: "wait" }): Promise<unknown>;
+        getMessages(): Promise<unknown[]>;
+      };
+      agent.getModel = parentToolCallingModel;
+      await agent.runTurn({ input: "delegate through onCall", mode: "wait" });
+      return await agent.getMessages();
+    });
+    expect(JSON.stringify(messages)).toContain("parent received native agentTool result");
   });
 });
