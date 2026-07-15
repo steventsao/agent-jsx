@@ -9,6 +9,17 @@ Cloudflare Agents or Flue wiring.
 
 API reference: <https://steventsao.github.io/agent-jsx/api/>
 
+## Install
+
+Alpha releases are published under the `alpha` dist-tag:
+
+```sh
+bun add @steventsao/agent-jsx@alpha
+```
+
+Import authored agents from `@steventsao/agent-jsx/agent`, or use the explicit
+compiler and JSX-runtime subpath exports documented in `package.json`.
+
 ## The authoring model
 
 An agent is a hierarchy-free class modeled after `cloudflare/agents`. It owns
@@ -189,6 +200,9 @@ The root suite covers type failures, explicit capability routing, schema
 validation, generated ACLs, reactive execution, chess alternation, and
 byte-for-byte fixtures. The compatibility suites execute generated code against
 the real target packages rather than mocks.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the package checks and Changesets-based
+alpha release process.
 
 Useful entry points:
 
