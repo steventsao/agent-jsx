@@ -12,7 +12,7 @@ same pipeline in React and prove the compiler reproduces the working destination
 
 - Sample: `fixtures/pdf/sample-pdf.ts` — ParseBench `docs/layout/2602.19961v1_p1.pdf` (arXiv 2602.19961 p1), base64 module.
 - Layout: `fixtures/pdf/regions.ts` — 4 column-scoped regions (what "the layoutparser said"; fixture-driven so the pipeline is deterministic — a live VLM layoutparser is a later swap that must not touch extraction).
-- Extraction spec: `targets/pdf/core/extract.ts` — bbox = normalized TOP-LEFT `{x0,y0,x1,y1}`; item membership = center-in-bbox; reading order = y-band then x; whitespace collapsed; unpdf (serverless pdf.js).
+- Extraction spec: `examples/pdf/core/extract.ts` — bbox = normalized TOP-LEFT `{x0,y0,x1,y1}`; item membership = center-in-bbox; reading order = y-band then x; whitespace collapsed; unpdf (serverless pdf.js).
 - Oracle: `fixtures/pdf/golden-segments.json` — regenerate ONLY when the extraction spec changes (`bun run fixtures:pdf`), review the diff.
 
 ## Phase A — hand-written targets (RED → deploy)

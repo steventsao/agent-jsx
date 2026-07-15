@@ -22,7 +22,7 @@
 
 import { Agent, getAgentByName } from "agents";
 import { REGIONS } from "../../../fixtures/pdf/regions.ts";
-import { b64ToBytes, extractTextLayer, type Bbox } from "../../../targets/pdf/core/extract.ts";
+import { b64ToBytes, extractTextLayer, type Bbox } from "../../../examples/pdf/core/extract.ts";
 
 export interface Env {
   ORCHESTRATOR: DurableObjectNamespace;

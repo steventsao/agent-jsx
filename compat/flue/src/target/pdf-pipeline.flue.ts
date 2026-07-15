@@ -21,7 +21,7 @@
  *     re-export valibot, so we import it directly (COMPAT-REPORT #14).
  *
  * The extraction/delegation split (recorded honestly per PDF-PIPELINE.md):
- * text-layer extraction is DETERMINISTIC CODE (targets/pdf/core/extract.ts),
+ * text-layer extraction is DETERMINISTIC CODE (examples/pdf/core/extract.ts),
  * so the workflow IS the fan-out — run() maps the layout regions through
  * extractTextLayer and never calls session.task(). The bbox-extractor
  * profile below exists as the delegation target for a future MODEL-DRIVEN
@@ -33,7 +33,7 @@
 import * as v from "valibot";
 import { defineAgent, defineAgentProfile, defineWorkflow } from "@flue/runtime";
 import { REGIONS } from "../../../../fixtures/pdf/regions.ts";
-import { b64ToBytes, extractTextLayer, type Bbox } from "../../../../targets/pdf/core/extract.ts";
+import { b64ToBytes, extractTextLayer, type Bbox } from "../../../../examples/pdf/core/extract.ts";
 
 /**
  * The child agent shape: given a page and a bbox, return the text layer within

@@ -1,7 +1,7 @@
 /**
  * ParseBench eval — step 1 of 2: build page-appropriate regions from REAL
  * text-item coordinates and compute the LOCAL reference extraction per region
- * (same primitive the worker runs: targets/pdf/core/extract.ts).
+ * (same primitive the worker runs: examples/pdf/core/extract.ts).
  *
  * Mirrors scripts/pdf/build-fixture.tsx (pageTextItems → derive bboxes →
  * extractTextLayer). Writes scripts/pdf/eval-regions.json for the live runner.
@@ -18,7 +18,7 @@ import {
   bytesToB64,
   type Bbox,
   type PositionedItem,
-} from "../../targets/pdf/core/extract.ts";
+} from "../../examples/pdf/core/extract.ts";
 
 const DOCS = "/Users/steventsao_personal/dev/ParseBench/data/docs";
 

@@ -1,7 +1,7 @@
 /**
  * Compile the React description of the pdf pipeline into this package.
  * Inputs: examples/pdf/{pdf-pipeline,bbox-extractor}.tsx + the shared spec
- * primitive targets/pdf/core/extract.ts (copied to src/domain/, imports
+ * primitive examples/pdf/core/extract.ts (copied to src/domain/, imports
  * rewritten). The emitted classes must reproduce the hand-written target's
  * golden — that equality is this package's spec.
  */
@@ -26,9 +26,9 @@ mkdirSync(here("src/generated"), { recursive: true });
 mkdirSync(here("src/domain"), { recursive: true });
 
 // the domain primitive travels with the package (unpdf resolves locally)
-cpSync(new URL("../../../targets/pdf/core/extract.ts", import.meta.url), here("src/domain/extract.ts"));
+cpSync(new URL("../../../examples/pdf/core/extract.ts", import.meta.url), here("src/domain/extract.ts"));
 
-const EXTRACT_REWRITE = { "../../targets/pdf/core/extract.ts": "../domain/extract.ts" };
+const EXTRACT_REWRITE = { "./core/extract.ts": "../domain/extract.ts" };
 copyAgentComponent(
   new URL("../../../examples/pdf/pdf-pipeline.tsx", import.meta.url),
   here("src/agents/pdf-pipeline.tsx").pathname,

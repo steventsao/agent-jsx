@@ -12,7 +12,7 @@
 
 import { agentComponent } from "../../src/agent-component.tsx";
 import { useAgentState } from "../../src/state.ts";
-import { b64ToBytes, extractTextLayer, type Bbox } from "../../targets/pdf/core/extract.ts";
+import { b64ToBytes, extractTextLayer, type Bbox } from "./core/extract.ts";
 
 export interface BboxExtractorProps {
   regionId: string;

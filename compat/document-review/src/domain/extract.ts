@@ -1,5 +1,5 @@
 /**
- * The pipeline's domain primitive: text-layer extraction within a bbox.
+ * Shared PDF domain primitive: text-layer extraction within a bbox.
  *
  * REACT-FREE and runtime-portable (bun for fixtures/tests, workerd inside
  * child DOs via unpdf — pdf.js built for serverless). This single

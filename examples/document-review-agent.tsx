@@ -9,7 +9,7 @@
 
 import { agentComponent } from "../src/agent-component.tsx";
 import { useAgentState, type AgentStore } from "../src/state.ts";
-import { b64ToBytes, extractTextLayer } from "../targets/pdf/core/extract.ts";
+import { b64ToBytes, extractTextLayer } from "./pdf/core/extract.ts";
 
 export interface DocumentPayload {
   title: string;
@@ -259,7 +259,7 @@ export function DocumentReviewAgent({ store }: { store: AgentStore<DocumentRevie
  * SimHost example and client test drive the DocumentReviewAgent component
  * directly; the emitter consumes this spec.
  */
-export const documentReviewAgent = agentComponent<Record<string, never>, DocumentReviewState>({
+export const documentReviewAgent = agentComponent<Record<string, unknown>, DocumentReviewState>({
   agentName: "document-review",
   initialState: initialDocumentReviewState,
   impl: DocumentReviewAgent,

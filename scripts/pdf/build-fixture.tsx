@@ -11,11 +11,11 @@
  * without touching extraction.
  *
  * Regenerate: bun run fixtures:pdf   (goldens must only change when the
- * extraction SPEC in targets/pdf/core/extract.ts changes — review the diff.)
+ * extraction SPEC in examples/pdf/core/extract.ts changes — review the diff.)
  */
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { b64ToBytes, bytesToB64, extractTextLayer, type Bbox } from "../../targets/pdf/core/extract.ts";
+import { b64ToBytes, bytesToB64, extractTextLayer, type Bbox } from "../../examples/pdf/core/extract.ts";
 
 const SOURCE = "/Users/steventsao_personal/dev/ParseBench/data/docs/layout/2602.19961v1_p1.pdf";
 
@@ -50,7 +50,7 @@ if (import.meta.main) {
   writeFileSync(
     new URL("regions.ts", dir),
     `// GENERATED layout fixture (what the layoutparser said) — do not edit.\n` +
-      `import type { Bbox } from "../../targets/pdf/core/extract.ts";\n\n` +
+      `import type { Bbox } from "../../examples/pdf/core/extract.ts";\n\n` +
       `export interface Region { id: string; bbox: Bbox }\n\n` +
       `export const REGIONS: Region[] = ${JSON.stringify(REGIONS, null, 2)};\n`
   );

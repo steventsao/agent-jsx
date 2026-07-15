@@ -8,7 +8,7 @@ faithfully — including where it breaks.
 
 - **Worker:** `https://agent-fiber-pdf-compiled.steventsao.workers.dev`
   (`POST /run` `{pdfB64, regions}` → `{ok, runId}`; `GET /result` → `{done, segments}`, latest run only).
-- **Reference primitive:** `targets/pdf/core/extract.ts` (byte-identical to the
+- **Reference primitive:** `examples/pdf/core/extract.ts` (byte-identical to the
   worker's `compat/pdf-compiled/src/domain/extract.ts` — verified with `diff`).
   Local reference is computed with the *same* `extractTextLayer`, so live and
   local must be byte-equal.

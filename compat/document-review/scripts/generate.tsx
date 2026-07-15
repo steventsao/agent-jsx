@@ -28,14 +28,14 @@ mkdirSync(here("src/agents"), { recursive: true });
 mkdirSync(here("src/generated"), { recursive: true });
 mkdirSync(here("src/domain"), { recursive: true });
 
-cpSync(new URL("../../../targets/pdf/core/extract.ts", import.meta.url), here("src/domain/extract.ts"));
+cpSync(new URL("../../../examples/pdf/core/extract.ts", import.meta.url), here("src/domain/extract.ts"));
 
 copyAgentComponent(
   new URL("../../../examples/document-review-agent.tsx", import.meta.url),
   here("src/agents/document-review-agent.tsx").pathname,
   "../generated/runtime",
   {
-    "../targets/pdf/core/extract.ts": "../domain/extract.ts",
+    "./pdf/core/extract.ts": "../domain/extract.ts",
   }
 );
 cpSync(

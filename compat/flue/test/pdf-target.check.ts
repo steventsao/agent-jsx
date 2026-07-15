@@ -66,7 +66,7 @@ describe("hand-written flue target: pdf → layout → per-bbox text layer", () 
   });
 
   it("the oracle bites: a shifted bbox does not reproduce golden", async () => {
-    const { extractTextLayer, b64ToBytes } = await import("../../../targets/pdf/core/extract.ts");
+    const { extractTextLayer, b64ToBytes } = await import("../../../examples/pdf/core/extract.ts");
     const bytes = b64ToBytes(SAMPLE_PDF_B64);
     const title = golden.find((g) => g.id === "title")!;
     const shifted = { ...(title.bbox as { x0: number; y0: number; x1: number; y1: number }) };

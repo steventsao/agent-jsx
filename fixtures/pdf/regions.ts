@@ -1,5 +1,5 @@
 // GENERATED layout fixture (what the layoutparser said) — do not edit.
-import type { Bbox } from "../../targets/pdf/core/extract.ts";
+import type { Bbox } from "../../examples/pdf/core/extract.ts";
 
 export interface Region { id: string; bbox: Bbox }
 

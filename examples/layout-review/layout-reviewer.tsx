@@ -15,7 +15,7 @@
 
 import { agentComponent } from "../../src/agent-component.tsx";
 import { useAgentState } from "../../src/state.ts";
-import type { Bbox } from "../../targets/pdf/core/extract.ts";
+import type { Bbox } from "../pdf/core/extract.ts";
 
 export interface ReviewRegion {
   id: string;
