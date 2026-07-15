@@ -9,6 +9,7 @@
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
+import { createElement } from "react";
 import { analyze } from "../../../src/compile/analyze.ts";
 import { emitCloudflare, type ChildAgentSpec } from "../../../src/compile/emit-cloudflare.ts";
 import { discoverAgents } from "../../../src/compile/graph.ts";
@@ -58,7 +59,10 @@ const UptimeImpl = UptimeAgent.spec.impl;
 const out = emitCloudflare(
   { spec: UptimeAgent.spec, componentName: "UptimeAgent", componentImport: "../agents/uptime-agent.tsx" },
   children,
-  analyze((i) => <UptimeImpl sites={SITES} store={createStore(samples[i]!)} />, samples.length),
+  analyze(
+    (i) => createElement(UptimeImpl, { sites: SITES, store: createStore(samples[i]!) }),
+    samples.length,
+  ),
   { runtimeImport: "./runtime", emitRuntimeTo: here("src/generated/runtime").pathname }
 );
 
