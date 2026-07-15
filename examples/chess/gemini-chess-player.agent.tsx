@@ -1,26 +1,21 @@
-import {
-  defineAgentProfile,
-  type AgentRenderProps,
-} from "../../src/agent-component.tsx";
+import { Agent } from "../../src/agent-class.tsx";
 import type { ChessPlayerProps } from "./board.tsx";
-import { PlayerPrompt, sampleTurn } from "./player-prompt.tsx";
+import { PlayerPrompt } from "./player-prompt.tsx";
 
-interface PlayerState extends Record<string, unknown> {}
+interface PlayerState extends Record<string, unknown> {
+  turns: number;
+}
 
-/** Identity, model, and authority stay explicit; only boundary glue is generated. */
-export const profile = defineAgentProfile<ChessPlayerProps, PlayerState>({
-  name: "gemini-chess-player",
-  model: "google/gemini-2.5-flash",
-  displayName: "Gemini",
-  description: "Chooses one legal chess move using a Gemini model.",
-  initialState: {},
-  capabilities: { onTurn: "result" },
-  sampleProps: { side: "white", turn: sampleTurn, onTurn: () => {} },
-});
+/** Model/provider identity is explicit policy; the class name carries no
+ * inferred meaning. */
+export default class GeminiChessPlayer extends Agent<PlayerState, ChessPlayerProps> {
+  static agentName = "gemini-chess-player";
+  model = "google/gemini-2.5-flash";
+  displayName = "Gemini";
+  description = "Chooses one legal chess move using a Gemini model.";
+  initialState: PlayerState = { turns: 0 };
 
-/** A normal pure JSX component. The compiler, not this file, makes it a boundary. */
-export default function GeminiAgent(
-  { turn }: AgentRenderProps<ChessPlayerProps, PlayerState>
-) {
-  return <PlayerPrompt provider="Gemini" turn={turn} />;
+  getPrompt() {
+    return <PlayerPrompt provider="Gemini" turn={this.props.turn} />;
+  }
 }

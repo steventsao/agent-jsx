@@ -32,11 +32,19 @@ mkdirSync(output, { recursive: true });
 const write = (name: string, source: string) => writeFileSync(new URL(name, output), source);
 
 write(
+  "chess-match.compiled.tsx",
+  emitAgentModule({
+    sourceImport: "../chess-match.agent.tsx",
+    exportName: "ChessMatchAgent",
+    runtimeImport: "../../../src/agent-class.tsx",
+  }),
+);
+write(
   "openai-chess-player.compiled.tsx",
   emitAgentModule({
     sourceImport: "../openai-chess-player.agent.tsx",
     exportName: "OpenAIAgent",
-    runtimeImport: "../../../src/agent-component.tsx",
+    runtimeImport: "../../../src/agent-class.tsx",
   }),
 );
 write(
@@ -44,7 +52,7 @@ write(
   emitAgentModule({
     sourceImport: "../gemini-chess-player.agent.tsx",
     exportName: "GeminiAgent",
-    runtimeImport: "../../../src/agent-component.tsx",
+    runtimeImport: "../../../src/agent-class.tsx",
   }),
 );
 
@@ -52,7 +60,6 @@ write(
   "chess-match.flue.ts",
   emitFlue({
     spec: rootNode.spec,
-    model: "openrouter/openai/gpt-5-mini",
     componentName: rootNode.exportName,
     componentImport: rootNode.importPath,
     analysis: rootNode.analysis,
@@ -74,11 +81,16 @@ for (const child of graph.slice(1)) {
   write(
     `${child.spec.agentName}.flue.ts`,
     emitFlueChild(
-      { spec: child.spec, exportName: child.exportName, importPath: child.importPath },
+      {
+        spec: child.spec,
+        exportName: child.exportName,
+        importPath: child.importPath,
+        sampleProps: child.samples?.[0]?.props,
+      },
       400,
       { runtimeImport: "./runtime", analysis: child.analysis },
     ),
   );
 }
 
-console.log(`generated 2 agent boundary companions + ${graph.length + 1} chess Flue modules`);
+console.log(`generated 3 agent boundary companions + ${graph.length + 1} chess Flue modules`);

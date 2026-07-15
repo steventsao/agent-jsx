@@ -9,6 +9,8 @@
  *   - `prompt.ts`          — renderPrompt (priompt-lite)
  *   - `types.ts`           — InfraRecord & friends (react import is type-only)
  *   - `agent-component.tsx`— agentComponent() (jsx only; react core, no DOM)
+ *   - `agent-class.tsx`    — hierarchy-free Cloudflare-style authoring layer
+ *   - `callable.ts`       — callable decorator + explicit callable refs
  *   - `workflow-executor.ts`— runReactiveWorkflow (v0.5 flue state→render loop)
  *   - `compile/evaluate.ts`— the ~70-line element walker
  *
@@ -26,7 +28,9 @@ const RUNTIME_FILES: ReadonlyArray<readonly [src: string, dest: string]> = [
   ["../prompt.ts", "prompt.ts"],
   ["../types.ts", "types.ts"],
   ["../intrinsics.d.ts", "intrinsics.d.ts"],
+  ["../callable.ts", "callable.ts"],
   ["../agent-component.tsx", "agent-component.tsx"],
+  ["../agent-class.tsx", "agent-class.tsx"],
   ["../workflow-executor.ts", "workflow-executor.ts"],
   ["./evaluate.ts", "compile/evaluate.ts"],
   // the react-free JSX runtime: compiled packages set jsxImportSource to a
@@ -73,9 +77,11 @@ export function copyAgentComponent(
     .replaceAll("../../src/state.ts", `${runtimeBase}/store.ts`)
     .replaceAll("../../src/store.ts", `${runtimeBase}/store.ts`)
     .replaceAll("../../src/agent-component.tsx", `${runtimeBase}/agent-component.tsx`)
+    .replaceAll("../../src/agent-class.tsx", `${runtimeBase}/agent-class.tsx`)
     .replaceAll("../src/state.ts", `${runtimeBase}/store.ts`)
     .replaceAll("../src/store.ts", `${runtimeBase}/store.ts`)
-    .replaceAll("../src/agent-component.tsx", `${runtimeBase}/agent-component.tsx`);
+    .replaceAll("../src/agent-component.tsx", `${runtimeBase}/agent-component.tsx`)
+    .replaceAll("../src/agent-class.tsx", `${runtimeBase}/agent-class.tsx`);
   const finalText = Object.entries(extraRewrites).reduce(
     (acc, [from, to]) => acc.replaceAll(from, to),
     rewritten

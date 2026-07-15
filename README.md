@@ -7,128 +7,105 @@ Compose typed agents as JSX. Serializable props are input, function props are
 explicit capabilities, `name` is durable identity, and the compiler emits the
 Cloudflare Agents or Flue wiring.
 
-## The small example
+## The authoring model
 
-This is the intended application surface:
-
-```tsx
-const turn = turnFor(state);
-if (!turn) return null;
-
-const handleTurn: ChessPlayerProps["onTurn"] = (decision) =>
-  applyChessTurn(store, decision);
-
-return (
-  <Board turn={turn}>
-    <Agent agentClass={OpenAIAgent} turn={turn} onTurn={handleTurn} />
-    <Agent agentClass={GeminiAgent} turn={turn} onTurn={handleTurn} />
-  </Board>
-);
-```
-
-`Board` selects white or black and injects only `side` plus the stable instance
-name. `turn` and `onTurn={handleTurn}` are explicit on each agent. The provider
-class selects behavior; it never implies data or authority. Each `agentClass`
-remains fully typed, so an incompatible player is rejected by TypeScript.
+An agent is a hierarchy-free class modeled after `cloudflare/agents`. It owns
+durable state, explicitly callable methods, and model context. It does not say
+whether it is a parent or child.
 
 ```tsx
 // openai-chess-player.agent.tsx
-export const profile = defineAgentProfile<ChessPlayerProps, PlayerState>({
-  name: "openai-chess-player",
-  model: "openrouter/openai/gpt-5-mini",
-  description: "Chooses one legal chess move using an OpenAI model.",
-  initialState: { turns: 0 },
-  sampleProps,
-  capabilities: { onTurn: "result" },
-});
+export default class OpenAIChessPlayer extends Agent<PlayerState, ChessPlayerProps> {
+  static agentName = "openai-chess-player";
+  model = "openrouter/openai/gpt-5-mini";
+  description = "Chooses one legal chess move using an OpenAI model.";
+  initialState = { turns: 0 };
 
-export default function OpenAIAgent(
-  { side, turn, onTurn, store }: AgentRenderProps<ChessPlayerProps, PlayerState>
-) {
-  return (
-    <>
-      {/* prompt, tools, and tasks owned by this agent */}
-    </>
-  );
+  getPrompt() {
+    return <PlayerPrompt provider="OpenAI" turn={this.props.turn} />;
+  }
+
+  getTools() {
+    return { /* AI SDK-style tools, or declarative <tool> JSX */ };
+  }
+
+  getSkills() {
+    return [];
+  }
+
+  render() {
+    return <PlayerStatus turns={this.state.turns} />; // optional UI only
+  }
 }
 ```
 
-That is the whole authored agent file. `name`, `model`, state, schemas, and
-capability kinds are policy, so they stay explicit. The JSX compiler generates
-a companion that calls the low-level `agentComponent(...)`, normalizes the
-capability declarations, and supplies the `.spec` contract consumed by both
-Cloudflare Agents and Flue emitters.
+`render()` is never prompt or control-plane input. Agent context comes only
+from `getPrompt()`, `getTools()`, and `getSkills()`. They use their natural
+plain forms (prompt strings, tool objects, skill lists), with JSX available
+where declarative composition is useful. Identity and model remain explicit;
+the compiler never infers them from names such as `OpenAIAgent` or
+`GeminiAgent`.
 
-The binder is ordinary reusable SDK code, not a chess compiler feature:
-
-```tsx
-const chess = createAgentBinder<Omit<BoardProps, "children">, Pick<ChessPlayerProps, "side">>({
-  displayName: "Board",
-  select: ({ turn }) =>
-    turn ? (turn.side === "white" ? 0 : 1) : null,
-  bind: ({ turn }) => ({
-    name: `${turn!.side}:${turn!.ply}`,
-    side: turn!.side,
-  }),
-});
-
-export const Agent = chess.Agent;
-export const Board = chess.Binder;
-```
-
-See [examples/chess](examples/chess/) for the full game state, chess.js rules,
-OpenAI and Gemini players, generated Flue modules, and a deployable Worker UI.
-
-## The boundary contract
-
-An authored agent is a normal JSX function plus an explicit profile:
+State and callable operations use the same shape as a Cloudflare Agent:
 
 ```tsx
-type WorkerProps = {
-  query: string;
-  onResult: (answer: Answer) => void;
-  lookupPolicy: (name: string) => Promise<Policy>;
-};
+export default class ChessMatch extends Agent<ChessState> {
+  static agentName = "chess-match";
+  model = "openrouter/openai/gpt-5-mini";
+  initialState = initialChessState;
 
-export const profile = defineAgentProfile<WorkerProps, WorkerState, Answer>({
-  name: "worker",
-  model: "openrouter/anthropic/claude-sonnet-4",
-  initialState: { status: "idle" },
-  inputSchema: WorkerInputSchema,
-  outputSchema: AnswerSchema,
-  capabilities: {
-    onResult: "result",
-    lookupPolicy: {
-      kind: "method",
-      inputSchema: LookupArgumentsSchema,
-      outputSchema: PolicySchema,
-    },
-  },
-});
+  get turn() {
+    return turnFor(this.state);
+  }
 
-export default function Worker(
-  { query, onResult, lookupPolicy, store, emit }:
-    AgentRenderProps<WorkerProps, WorkerState, Answer>
-) {
-  // The implementation sees normal typed functions. Generated runtimes turn
-  // explicit grants into RPC or task results.
-  return null;
+  @callable()
+  handleTurn(decision: ChessDecision | string) {
+    this.setState((state) => reduceChessTurn(state, decision));
+  }
 }
 ```
 
-The rules are deliberately small:
+The compiler generates the tiny `compileAgentClass(...)` companions. The
+authored files never call `agentComponent` or declare capability maps.
 
-- Non-function props cross the boundary as serializable child input.
-- Every function prop must appear in `capabilities`. There is no `on*`
-  naming heuristic and no implicit RPC exposure.
-- `callback` is a child-to-parent event, `method` returns a value, and
-  `result` receives delegated work output.
-- Optional argument and return schemas validate both sides of a call.
-- A boundary prop `name` identifies the durable instance.
-- Profile `name` identifies the reusable class/profile; the compiler never
-  guesses it from a filename or export. Profile `model` is likewise authored.
-- A render-prop child is a continuation. The child calls `emit(output)`, the
-  parent stores that output, re-renders, and owns the resulting grandchildren.
+## Explicit composition
+
+Hierarchy and authority are established separately in ordinary JSX:
+
+```tsx
+export const ChessMatch = composeAgent(
+  <ChessMatchAgent name="match">
+    {({ turn, handleTurn }) => {
+      if (!turn) return null;
+      return (
+        <Board turn={turn}>
+          <Player
+            agentClass={OpenAIAgent}
+            turn={turn}
+            onTurn={result(handleTurn)}
+          />
+          <Player
+            agentClass={GeminiAgent}
+            turn={turn}
+            onTurn={result(handleTurn)}
+          />
+        </Board>
+      );
+    }}
+  </ChessMatchAgent>,
+);
+```
+
+The render prop exposes only public getters and `@callable` methods from the
+match agent. `result(handleTurn)` is an explicit grant: it binds the selected
+player’s result to that callable. Nesting by itself grants no RPC access, and
+there is no method-name heuristic. Serializable props remain child input;
+function props must be explicitly branded at the composition site.
+
+`Board` is ordinary reusable composition code. It selects the active seat and
+injects only `side` plus a stable instance name; the compiler has no chess
+special case. See [examples/chess](examples/chess/) for the complete game,
+generated Flue modules, and deployable Worker fixture.
 
 The chess Worker also binds providers by live class identity:
 
@@ -147,18 +124,18 @@ needs `if (agent === "openai-chess-player")` dispatch.
 
 | JSX concept | Cloudflare Agents | Flue |
 |---|---|---|
-| authored component + profile | typed Agent/Durable Object class | `defineAgentProfile` |
+| authored Agent class | typed Agent/Durable Object class | `defineAgentProfile` |
 | nested agent | child binding, migration, accessor | parent `subagents` roster |
 | stable `name` | child instance identity | task/spawn-plan identity |
 | serializable prop | `setProps` input | `session.task` input |
-| callback/method prop | explicit generated RPC ACL | awaited task result or generated binding |
+| passed callable ref | explicit generated RPC ACL | awaited task result or generated binding |
 | tool slot | native `agentTool(ChildClass, schemas)` | profile alias named by the prop key |
 | prompt tree | `getSystemPrompt` / rendered context | profile instructions |
 
 Cloudflare native `agentTool` preserves the child description, display name,
 input schema, output schema, structured result, and stable tool-call run
-identity. The generated parent exposes only capabilities declared at the JSX
-boundary.
+identity. The generated parent exposes only callable references explicitly
+passed at the JSX boundary.
 
 Flue resolves subagents by `AgentProfile.name`, so a prop-key tool slot such as
 `onCall` becomes a generated alias profile with that exact name. Delegation uses
@@ -217,11 +194,14 @@ the real target packages rather than mocks.
 
 Useful entry points:
 
-- [src/compile/emit-agent-module.ts](src/compile/emit-agent-module.ts) — lowers
-  a normal component + profile file to the compiler-owned boundary companion.
-- [src/agent-component.tsx](src/agent-component.tsx) — profiles, typed agent
-  classes, capabilities, binders, and the low-level boundary primitive.
-- [examples/chess/match.tsx](examples/chess/match.tsx) — the tiny Board syntax.
+- [src/agent-class.tsx](src/agent-class.tsx) — hierarchy-free Agent authoring,
+  render-prop bindings, and compiler lowering.
+- [src/compile/emit-agent-module.ts](src/compile/emit-agent-module.ts) — emits
+  the compiler-owned class-to-boundary companion.
+- [src/agent-component.tsx](src/agent-component.tsx) — the low-level boundary,
+  capability routing, and reusable binders.
+- [examples/chess/match.tsx](examples/chess/match.tsx) — explicit hierarchy and
+  callable binding in composition JSX.
 - [src/compile/emit-think.ts](src/compile/emit-think.ts) — native Cloudflare
   `agentTool` emission.
 - [src/compile/emit-flue.ts](src/compile/emit-flue.ts) — Flue profiles, aliases,

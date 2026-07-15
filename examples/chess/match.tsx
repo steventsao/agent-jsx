@@ -1,38 +1,36 @@
-import { agentComponent } from "../../src/agent-component.tsx";
-import { useAgentState } from "../../src/state.ts";
+import { composeAgent, result } from "../../src/agent-class.tsx";
 import {
-  applyChessTurn,
-  Agent,
+  Agent as Player,
   Board,
   initialChessState,
   stateAfterMoves,
-  turnFor,
-  type ChessPlayerProps,
   type ChessState,
 } from "./board.tsx";
-import { GeminiAgent, OpenAIAgent } from "./players.tsx";
+import { ChessMatchAgent, GeminiAgent, OpenAIAgent } from "./players.tsx";
 
 export { initialChessState, stateAfterMoves, type ChessState } from "./board.tsx";
 
-interface ChessMatchProps extends Record<string, unknown> {}
-
-export const ChessMatch = agentComponent<ChessMatchProps, ChessState>({
-  agentName: "chess-match",
-  displayName: "Agent JSX Chess",
-  description: "Alternates two model agents over a validated chess board.",
-  initialState: initialChessState,
-  sampleProps: {},
-  impl: ({ store }) => {
-    const state = useAgentState(store);
-    const turn = turnFor(state);
-    if (!turn) return null;
-    const handleTurn: ChessPlayerProps["onTurn"] = (decision) =>
-      applyChessTurn(store, decision);
-    return (
-      <Board turn={turn}>
-        <Agent agentClass={OpenAIAgent} turn={turn} onTurn={handleTurn} />
-        <Agent agentClass={GeminiAgent} turn={turn} onTurn={handleTurn} />
-      </Board>
-    );
-  },
-});
+/** Hierarchy and authority exist only here. The render prop exposes the match
+ * agent's getters and @callable methods; passing result(handleTurn) is the
+ * explicit child-to-parent grant. */
+export const ChessMatch = composeAgent(
+  <ChessMatchAgent name="match">
+    {({ turn, handleTurn }) => {
+      if (!turn) return null;
+      return (
+        <Board turn={turn}>
+          <Player
+            agentClass={OpenAIAgent}
+            turn={turn}
+            onTurn={result(handleTurn)}
+          />
+          <Player
+            agentClass={GeminiAgent}
+            turn={turn}
+            onTurn={result(handleTurn)}
+          />
+        </Board>
+      );
+    }}
+  </ChessMatchAgent>,
+);

@@ -16,6 +16,7 @@ for (const file of [
   "players.tsx",
   "match.tsx",
   "player-prompt.tsx",
+  "chess-match.agent.tsx",
   "openai-chess-player.agent.tsx",
   "gemini-chess-player.agent.tsx",
 ]) {
@@ -30,11 +31,19 @@ for (const file of [
 }
 
 writeFileSync(
+  new URL("chess-match.compiled.tsx", generatedAgents),
+  emitAgentModule({
+    sourceImport: "../chess-match.agent.tsx",
+    exportName: "ChessMatchAgent",
+    runtimeImport: "../../generated/runtime/agent-class.tsx",
+  }),
+);
+writeFileSync(
   new URL("openai-chess-player.compiled.tsx", generatedAgents),
   emitAgentModule({
     sourceImport: "../openai-chess-player.agent.tsx",
     exportName: "OpenAIAgent",
-    runtimeImport: "../../generated/runtime/agent-component.tsx",
+    runtimeImport: "../../generated/runtime/agent-class.tsx",
   }),
 );
 writeFileSync(
@@ -42,7 +51,7 @@ writeFileSync(
   emitAgentModule({
     sourceImport: "../gemini-chess-player.agent.tsx",
     exportName: "GeminiAgent",
-    runtimeImport: "../../generated/runtime/agent-component.tsx",
+    runtimeImport: "../../generated/runtime/agent-class.tsx",
   }),
 );
 

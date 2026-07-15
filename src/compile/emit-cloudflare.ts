@@ -53,6 +53,8 @@ export interface ChildAgentSpec {
   /** e.g. `Investigator` — the agentComponent export. */
   exportName: string;
   importPath: string;
+  /** Representative props inferred from the parent's explicit composition. */
+  sampleProps?: Record<string, unknown>;
 }
 
 export interface EmitOptions {
@@ -99,13 +101,14 @@ function subagentKindsFromAnalysis(analysis: Analysis): string[] {
  *  boundaries — by evaluating the impl at sampleProps + initialState. The
  *  always-on boundaries surface every nested kind (dynamic fan-out only
  *  multiplies instances of a kind already present). */
-function childKindsOfSpec(spec: AnyAgentSpec): string[] {
+function childKindsOfSpec(child: ChildAgentSpec): string[] {
+  const { spec } = child;
   const kinds: string[] = [];
   // Sample-output expansion ON: a child that spawns its OWN grandchildren via a
   // render-prop continuation must bind their kinds too (its childBinding).
   const roots = withOutputs({ outputs: {}, setOutput: () => {}, expandSamples: true }, () =>
     evaluateComponent(spec.impl, {
-      ...(spec.sampleProps ?? {}),
+      ...(child.sampleProps ?? spec.sampleProps ?? {}),
       store: createStore(spec.initialState),
       emit: () => {},
     } as never)
@@ -155,7 +158,7 @@ export function emitCloudflare(
   const rootClass = `${pascal(spec.agentName)}Durable`;
   const rootBinding = scream(spec.agentName);
   const kids = children.map((c) => {
-    const childKinds = childKindsOfSpec(c.spec);
+    const childKinds = childKindsOfSpec(c);
     return {
       ...c,
       className: `${pascal(c.spec.agentName)}Durable`,
@@ -206,6 +209,107 @@ ${rootToolEntries
   }`
     : "";
   const agentToolImport = rootToolEntries.length ? `import { agentTool } from "agents/agent-tools";\n` : "";
+  const hasAuthoredCallables = [spec, ...kids.map((kid) => kid.spec)].some(
+    (candidate) => (candidate.callableMethods?.length ?? 0) > 0,
+  );
+  const agentsImport = hasAuthoredCallables
+    ? `import { Agent, callable, getAgentByName } from "agents";`
+    : `import { Agent, getAgentByName } from "agents";`;
+  const callableBlock = (candidate: AnyAgentSpec, componentName: string) =>
+    (candidate.callableMethods ?? [])
+      .map(
+        (method) => `
+  @callable()
+  async ${method}(...args: unknown[]) {
+    return await this.invokeAuthoredCallable(${componentName}.spec, ${JSON.stringify(method)}, args);
+  }`,
+      )
+      .join("\n");
+  const authoredAbstract = hasAuthoredCallables
+    ? `
+  /** Props visible to the hierarchy-free authored class. */
+  protected abstract authoredProps(): Record<string, unknown>;
+
+`
+    : "\n";
+  const authoredRuntime = hasAuthoredCallables
+    ? `
+  /** Turn serializable callback refs back into ordinary functions for the
+   *  hierarchy-free authored class and its getPrompt/getTools/getSkills. */
+  protected callbackProps(callbacks: Record<string, CallbackRef>) {
+    const proxied: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+    for (const [event, ref] of Object.entries(callbacks)) {
+      proxied[event] = async (...args) => {
+        const ns = this.env[ref.binding] as unknown as DurableObjectNamespace;
+        const parent = (ref.parentName
+          ? await getAgentByName(ns as never, ref.parentName)
+          : ns.get(ns.idFromString(ref.parentId))) as unknown as {
+          onAgentEvent(p: { callback: { child: string; event: string }; args: unknown[] }): Promise<unknown>;
+        };
+        return await parent.onAgentEvent({ callback: { child: ref.child, event: ref.event }, args });
+      };
+    }
+    return proxied;
+  }
+
+  /** Bridge an authored callable method onto the generated Agents SDK class. */
+  protected async invokeAuthoredCallable<P extends object, T extends Record<string, unknown>>(
+    spec: {
+      invokeCallable?: (
+        method: string,
+        props: P,
+        store: AgentStore<T>,
+        args: unknown[],
+      ) => unknown | Promise<unknown>;
+    },
+    method: string,
+    args: unknown[],
+  ) {
+    if (!spec.invokeCallable) throw new Error(\`authored callable missing compiler bridge: \${method}\`);
+    const result = await spec.invokeCallable(
+      method,
+      this.authoredProps() as P,
+      this.boundStore<T>(),
+      args,
+    );
+    this.#needsReconcile = true;
+    await this.#requestReconcile();
+    return result;
+  }
+
+`
+    : "\n";
+  const rootAuthoredProps = hasAuthoredCallables
+    ? `  protected authoredProps(): Record<string, unknown> {
+    return ROOT_PROPS;
+  }
+`
+    : "";
+  const childAuthoredProps = hasAuthoredCallables
+    ? `
+  protected authoredProps(): Record<string, unknown> {
+    const state = this.state as ChildRuntimeState;
+    return { ...(state.__props ?? {}), ...this.callbackProps(state.__callbacks) };
+  }
+
+`
+    : "\n";
+  const childRenderBridge = hasAuthoredCallables
+    ? `    const props = this.authoredProps();
+    return COMPONENT.spec.impl({ ...props, emit: props.__emit ?? (() => {}), store: this.boundStore() } as never);`
+    : `    const proxied: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
+    for (const [event, ref] of Object.entries(state.__callbacks)) {
+      proxied[event] = async (...args) => {
+        const ns = this.env[ref.binding] as unknown as DurableObjectNamespace;
+        const parent = (ref.parentName
+          ? await getAgentByName(ns as never, ref.parentName)
+          : ns.get(ns.idFromString(ref.parentId))) as unknown as {
+          onAgentEvent(p: { callback: { child: string; event: string }; args: unknown[] }): Promise<unknown>;
+        };
+        return await parent.onAgentEvent({ callback: { child: ref.child, event: ref.event }, args });
+      };
+    }
+    return COMPONENT.spec.impl({ ...state.__props, ...proxied, emit: proxied.__emit ?? (() => {}), store: this.boundStore() } as never);`;
   const envEntries = [rootBinding, ...kids.map((k) => k.binding)]
     .map((b) => `  ${b}: DurableObjectNamespace;`)
     .join("\n");
@@ -223,7 +327,7 @@ ${rootToolEntries
 ${capabilityMap}
  */
 
-import { Agent, getAgentByName } from "agents";
+${agentsImport}
 ${agentToolImport}import { evaluateTree } from "${rt}/compile/evaluate.ts";
 import { collectInfra, collectPrompt } from "${rt}/tree.ts";
 import { renderPromptOrFallback } from "${rt}/prompt.ts";
@@ -289,8 +393,7 @@ abstract class FiberAgentBase<S extends Record<string, unknown>> extends Agent<G
   /** This class's own env binding — how children address callbacks back here. */
   protected abstract selfBinding: keyof GeneratedEnv;
   protected abstract renderTree(state: S): unknown;
-
-  /** Freshest closures from the latest render. Never persisted. */
+${authoredAbstract}  /** Freshest closures from the latest render. Never persisted. */
   #handlers = new Map<string, InfraRecord["handlers"]>();
   /** Explicit function-prop ACLs from the latest render. */
   #bindings = new Map<string, InfraRecord["bindings"]>();
@@ -340,8 +443,7 @@ abstract class FiberAgentBase<S extends Record<string, unknown>> extends Agent<G
       snapshot: () => JSON.stringify(this.state),
     };
   }
-
-  /** Durable self-identity. partyserver's \`.name\` is REQUEST-SCOPED — set by
+${authoredRuntime}  /** Durable self-identity. partyserver's \`.name\` is REQUEST-SCOPED — set by
    *  getAgentByName routing, throwing (or varying) on unnamed wakes (alarms,
    *  onStart after eviction). Deriving child names or callback refs from it
    *  raw renames the whole child fleet between contexts → spawn/shutdown
@@ -614,7 +716,7 @@ ${agentDoc(spec, root.componentName)}export class ${rootClass} extends FiberAgen
   initialState = ${JSON.stringify(spec.initialState)} as RootState;
   protected selfBinding = "${rootBinding}" as const;
   protected childBinding = ${rootChildBinding};
-  protected renderTree(state: RootState): unknown {
+${rootAuthoredProps}  protected renderTree(state: RootState): unknown {
     // The root renders its OWN tree via the spec's impl (a bare component call
     // would be a subagent boundary — parent composition). A root emits to no
     // one, so \`emit\` is a no-op; its OWN boundaries' continuations expand from
@@ -623,7 +725,7 @@ ${agentDoc(spec, root.componentName)}export class ${rootClass} extends FiberAgen
   }
   protected imperativePrompt(state: RootState): string {
     return ${root.componentName}.spec.getPrompt?.(state) ?? "";
-  }${getToolsBlock}
+  }${callableBlock(spec, root.componentName)}${getToolsBlock}
 ${root.requestHandlerExport ? `
   async onRequest(req: Request): Promise<Response> {
     return ${root.requestHandlerExport}(req, this);
@@ -639,8 +741,7 @@ ${agentDoc(k.spec, k.exportName)}export class ${k.className} extends FiberAgentB
   initialState = { ...${k.exportName}.spec.initialState, __props: null, __callbacks: {} };
   protected selfBinding = "${k.binding}" as const;
   protected childBinding = ${k.childBindingSource}
-
-  async onStart() {}
+${childAuthoredProps}  async onStart() {}
   async onStateChanged(_state?: ChildRuntimeState & Record<string, unknown>, _source?: unknown) {}
 
   /** GENERATED: the parent's prop push. Receiving new props = re-render.
@@ -688,24 +789,12 @@ ${agentDoc(k.spec, k.exportName)}export class ${k.className} extends FiberAgentB
     // \`__emit\` callback is the child's continuation output channel — routed to
     // \`emit\` below, it lands in the parent's __outputs and drives the parent's
     // render-prop continuation.
-    const proxied: Record<string, (...args: unknown[]) => Promise<unknown>> = {};
-    for (const [event, ref] of Object.entries(state.__callbacks)) {
-      proxied[event] = async (...args) => {
-        const ns = this.env[ref.binding] as unknown as DurableObjectNamespace;
-        const parent = (ref.parentName
-          ? await getAgentByName(ns as never, ref.parentName)
-          : ns.get(ns.idFromString(ref.parentId))) as unknown as {
-          onAgentEvent(p: { callback: { child: string; event: string }; args: unknown[] }): Promise<unknown>;
-        };
-        return await parent.onAgentEvent({ callback: { child: ref.child, event: ref.event }, args });
-      };
-    }
-    return ${k.exportName}.spec.impl({ ...state.__props, ...proxied, emit: proxied.__emit ?? (() => {}), store: this.boundStore() } as never);
+${childRenderBridge.replaceAll("COMPONENT", k.exportName)}
   }
 
   protected imperativePrompt(state: ChildRuntimeState & Record<string, unknown>): string {
     return ${k.exportName}.spec.getPrompt?.(state as never) ?? "";
-  }
+  }${callableBlock(k.spec, k.exportName)}
 }`
   )
   .join("\n")}

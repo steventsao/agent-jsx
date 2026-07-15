@@ -172,13 +172,25 @@ describe("chess Flue target", () => {
   });
 
   it("emits provider-specific player instructions", () => {
+    const openaiNode = graph.find((node) => node.spec.agentName === "openai-chess-player")!;
+    const geminiNode = graph.find((node) => node.spec.agentName === "gemini-chess-player")!;
     const openai = emitFlueChild(
-      { spec: OpenAIAgent.spec, exportName: "OpenAIAgent", importPath: "../players.tsx" },
+      {
+        spec: OpenAIAgent.spec,
+        exportName: "OpenAIAgent",
+        importPath: "../players.tsx",
+        sampleProps: openaiNode.samples?.[0]?.props,
+      },
       400,
       { runtimeImport: "./runtime" },
     );
     const gemini = emitFlueChild(
-      { spec: GeminiAgent.spec, exportName: "GeminiAgent", importPath: "../players.tsx" },
+      {
+        spec: GeminiAgent.spec,
+        exportName: "GeminiAgent",
+        importPath: "../players.tsx",
+        sampleProps: geminiNode.samples?.[0]?.props,
+      },
       400,
       { runtimeImport: "./runtime" },
     );

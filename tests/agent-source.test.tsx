@@ -53,18 +53,26 @@ describe("normal agent source modules", () => {
     });
   });
 
-  it("emits the checked-in chess boundary companions", () => {
+  it("emits the checked-in class-to-boundary chess companions", () => {
+    const match = emitAgentModule({
+      sourceImport: "../chess-match.agent.tsx",
+      exportName: "ChessMatchAgent",
+      runtimeImport: "../../../src/agent-class.tsx",
+    });
     const openai = emitAgentModule({
       sourceImport: "../openai-chess-player.agent.tsx",
       exportName: "OpenAIAgent",
-      runtimeImport: "../../../src/agent-component.tsx",
+      runtimeImport: "../../../src/agent-class.tsx",
     });
     const gemini = emitAgentModule({
       sourceImport: "../gemini-chess-player.agent.tsx",
       exportName: "GeminiAgent",
-      runtimeImport: "../../../src/agent-component.tsx",
+      runtimeImport: "../../../src/agent-class.tsx",
     });
 
+    expect(match).toBe(
+      readFileSync(new URL("../examples/chess/generated/chess-match.compiled.tsx", import.meta.url), "utf8")
+    );
     expect(openai).toBe(
       readFileSync(new URL("../examples/chess/generated/openai-chess-player.compiled.tsx", import.meta.url), "utf8")
     );

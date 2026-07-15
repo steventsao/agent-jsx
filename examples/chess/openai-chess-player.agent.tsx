@@ -1,26 +1,21 @@
-import {
-  defineAgentProfile,
-  type AgentRenderProps,
-} from "../../src/agent-component.tsx";
+import { Agent } from "../../src/agent-class.tsx";
 import type { ChessPlayerProps } from "./board.tsx";
-import { PlayerPrompt, sampleTurn } from "./player-prompt.tsx";
+import { PlayerPrompt } from "./player-prompt.tsx";
 
-interface PlayerState extends Record<string, unknown> {}
+interface PlayerState extends Record<string, unknown> {
+  turns: number;
+}
 
-/** Identity, model, and authority stay explicit; only boundary glue is generated. */
-export const profile = defineAgentProfile<ChessPlayerProps, PlayerState>({
-  name: "openai-chess-player",
-  model: "openrouter/openai/gpt-5-mini",
-  displayName: "OpenAI",
-  description: "Chooses one legal chess move using an OpenAI model.",
-  initialState: {},
-  capabilities: { onTurn: "result" },
-  sampleProps: { side: "white", turn: sampleTurn, onTurn: () => {} },
-});
+/** A hierarchy-free agent definition. Composition decides where it runs and
+ * which callable references it receives. */
+export default class OpenAIChessPlayer extends Agent<PlayerState, ChessPlayerProps> {
+  static agentName = "openai-chess-player";
+  model = "openrouter/openai/gpt-5-mini";
+  displayName = "OpenAI";
+  description = "Chooses one legal chess move using an OpenAI model.";
+  initialState: PlayerState = { turns: 0 };
 
-/** A normal pure JSX component. The compiler, not this file, makes it a boundary. */
-export default function OpenAIAgent(
-  { turn }: AgentRenderProps<ChessPlayerProps, PlayerState>
-) {
-  return <PlayerPrompt provider="OpenAI" turn={turn} />;
+  getPrompt() {
+    return <PlayerPrompt provider="OpenAI" turn={this.props.turn} />;
+  }
 }

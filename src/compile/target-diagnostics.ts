@@ -15,7 +15,7 @@ export interface TargetDiagnostic {
 
 const formatInfra = (child: ChildAgentSpec) => {
   const roots = evaluateComponent(child.spec.impl, {
-    ...(child.spec.sampleProps ?? {}),
+    ...(child.sampleProps ?? child.spec.sampleProps ?? {}),
     store: createStore(child.spec.initialState),
   } as never);
   return roots

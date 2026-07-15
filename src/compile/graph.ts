@@ -84,7 +84,15 @@ export function analyzeAgent(mod: AgentModule): Analysis {
  *  emitted boxes) is still discovered — its class/binding/profile must be
  *  generated even though the boundary is dynamic. */
 export function directChildKinds(mod: AgentModule): string[] {
-  const kinds: string[] = [];
+  return [...directChildSampleProps(mod).keys()];
+}
+
+/** Representative serializable props for every direct child kind, inferred
+ * from the actual composition boundary. Agent files therefore do not need a
+ * separate sampleProps/profile declaration just so a target can render their
+ * resting prompt. */
+export function directChildSampleProps(mod: AgentModule): Map<string, Record<string, unknown>[]> {
+  const samplesByKind = new Map<string, Record<string, unknown>[]>();
   const samples = mod.samples ?? [{ state: mod.spec.initialState as Record<string, unknown> }];
   for (const sample of samples) {
     withOutputs({ outputs: {}, setOutput: () => {}, expandSamples: true }, () => {
@@ -97,13 +105,18 @@ export function directChildKinds(mod: AgentModule): string[] {
         for (const rec of collectInfra(root)) {
           if (rec.kind === "subagent") {
             const kind = String(rec.config.kind);
-            if (!kinds.includes(kind)) kinds.push(kind);
+            const { kind: _kind, ...props } = rec.config;
+            const known = samplesByKind.get(kind) ?? [];
+            if (!known.some((candidate) => JSON.stringify(candidate) === JSON.stringify(props))) {
+              known.push(props);
+            }
+            samplesByKind.set(kind, known);
           }
         }
       }
     });
   }
-  return kinds;
+  return samplesByKind;
 }
 
 /**
@@ -128,12 +141,27 @@ export function discoverAgents(root: AgentModule, registry: AgentModule[]): Agen
     if (visited.has(mod.spec.agentName)) continue;
     visited.add(mod.spec.agentName);
 
-    const directChildren = directChildKinds(mod);
+    const childSampleProps = directChildSampleProps(mod);
+    const directChildren = [...childSampleProps.keys()];
     nodes.push({ ...mod, analysis: analyzeAgent(mod), directChildren, isRoot });
 
     for (const kind of directChildren) {
       const childMod = byName.get(kind);
-      if (childMod && !visited.has(kind)) queue.push({ mod: childMod, isRoot: false });
+      if (childMod && !visited.has(kind)) {
+        const inferred = childSampleProps.get(kind) ?? [];
+        queue.push({
+          mod: childMod.samples || inferred.length === 0
+            ? childMod
+            : {
+                ...childMod,
+                samples: inferred.map((props) => ({
+                  props,
+                  state: childMod.spec.initialState as Record<string, unknown>,
+                })),
+              },
+          isRoot: false,
+        });
+      }
     }
   }
   return nodes;

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./agent": "./src/agent-class.tsx",
     "./agent-component": "./src/agent-component.tsx",
     "./compile/emit-agent-module": "./src/compile/emit-agent-module.ts",
     "./jsx-runtime": "./src/jsx-data-runtime.ts",

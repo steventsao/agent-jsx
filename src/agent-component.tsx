@@ -39,6 +39,7 @@
 import type { ReactNode } from "react";
 import type { AgentStore } from "./store.ts";
 import { getOutputs } from "./store.ts";
+import { callableRefDeclaration } from "./callable.ts";
 
 /** What a child agent's implementation receives at runtime. `emit` is the
  *  continuation output channel — call it when the result is ready (e.g. in a
@@ -176,6 +177,19 @@ interface AgentSpecBase<P extends object, S extends Record<string, unknown>, O> 
    *  this is the fallback when it does not — a plain string derived from state.
    *  Root and child agents alike may supply it (see prompt.ts:renderPromptOrFallback). */
   getPrompt?: (state: S) => string;
+  /** Opaque Agent Skills references. Class-authored agents expose these via
+   * getSkills(); Flue retains the references on generated profiles. */
+  skills?: readonly unknown[];
+  /** Compiler-owned lowering metadata for Cloudflare-style authored classes.
+   * Ordinary agentComponent specs omit these fields. */
+  callableMethods?: string[];
+  createBindings?: (props: P, store: AgentStore<S>) => Record<string, unknown>;
+  invokeCallable?: (
+    method: string,
+    props: P,
+    store: AgentStore<S>,
+    args: unknown[],
+  ) => unknown | Promise<unknown>;
 }
 
 /** Agent definition plus an exhaustive declaration for every function prop. */
@@ -480,7 +494,10 @@ export function agentComponent<
     const declarations = (spec.capabilities ?? {}) as Record<string, AgentCapabilityDeclaration>;
     for (const [key, value] of Object.entries(childProps)) {
       if (typeof value !== "function") continue;
-      const declaration = declarations[key];
+      // Class-agent render props carry a branded callable ref. The brand is the
+      // explicit grant at the composition site; legacy agentComponent specs
+      // continue to use their exhaustive capabilities declaration.
+      const declaration = declarations[key] ?? callableRefDeclaration(value);
       if (!declaration) {
         throw new Error(
           `[agent-jsx] boundary "${name}" (kind ${spec.agentName}): function prop "${key}" has no explicit capability declaration`
