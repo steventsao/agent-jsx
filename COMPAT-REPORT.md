@@ -40,9 +40,9 @@ shook out these divergences from the first-draft assumptions.
 ## Verification commands
 
 ```sh
-bun test tests && bun run typecheck            # layer 1  (22 pass: 8 base + 6 v0.5 + 6 fixtures + 2 v0.6 method-props)
-cd compat/cloudflare && bun run test           # layer 2  (6 pass: 5 base + 1 v0.6 method-props, real workerd)
-cd compat/flue && bun run test                 # layer 3  (7 pass: 4 base + 3 v0.5 workflow, real @flue/runtime)
+bun run ci                                     # 125 root tests + typecheck + packed-package validation
+cd compat/cloudflare && bun run typecheck && bun run test  # 7 tests, real workerd
+cd compat/flue && bun run test                 # 12 Vitest tests + 3 plain-Bun PDF checks, real @flue/runtime
 bun run all                                    # examples still green
 ```
 
