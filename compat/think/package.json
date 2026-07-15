@@ -5,7 +5,7 @@
   "description": "Proves generated THINK-mode classes run on real @cloudflare/think@0.12.1 + agents@0.17.3 (agents/agent-tools) inside workerd (vitest-pool-workers). The 0.8.7 compat packages are UNTOUCHED.",
   "scripts": {
     "generate": "bun scripts/generate.tsx",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun run generate && tsc --noEmit",
     "test": "bun run generate && vitest run"
   },
   "dependencies": {
