@@ -184,8 +184,10 @@ describe("chess Flue target", () => {
     );
 
     expect(openai).toContain('name: "openai-chess-player"');
+    expect(openai).toContain('model: "openrouter/openai/gpt-5-mini"');
     expect(openai).toContain("Return one legal move");
     expect(gemini).toContain('name: "gemini-chess-player"');
+    expect(gemini).toContain('model: "google/gemini-2.5-flash"');
     expect(gemini).toContain("Return one legal move");
   });
 

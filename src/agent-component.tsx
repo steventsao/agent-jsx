@@ -54,8 +54,14 @@ import { getOutputs } from "./store.ts";
  *  pending when the child's reconcile resolves and workerd tears the I/O context
  *  down mid-flight ("Closing rpc while resolve was pending"), exactly the
  *  await-the-cross-DO-call rule the dispatcher already honors (COMPAT-REPORT #22, #37). */
+export type AgentRenderProps<
+  P,
+  S extends Record<string, unknown>,
+  O = unknown,
+> = P & { store: AgentStore<S>; emit?: (output: O) => void | Promise<void> };
+
 export type AgentImpl<P, S extends Record<string, unknown>, O = unknown> = (
-  props: P & { store: AgentStore<S>; emit?: (output: O) => void | Promise<void> }
+  props: AgentRenderProps<P, S, O>
 ) => ReactNode;
 
 /** The minimal schema shape a boundary validates against: a `parse` that
@@ -102,6 +108,18 @@ export type AgentCapabilities<P extends object> = {
   [K in FunctionPropKeys<P>]-?: AgentCapabilityDeclaration<Extract<NonNullable<P[K]>, AnyFunction>>;
 };
 
+/** Source profiles may use the concise `onResult: "result"` spelling. The
+ * generated agentComponent always receives the normalized `{ kind }` form. */
+export type AgentProfileCapabilityDeclaration<F extends AnyFunction = AnyFunction> =
+  | AgentCapabilityKind
+  | AgentCapabilityDeclaration<F>;
+
+export type AgentProfileCapabilities<P extends object> = {
+  [K in FunctionPropKeys<P>]-?: AgentProfileCapabilityDeclaration<
+    Extract<NonNullable<P[K]>, AnyFunction>
+  >;
+};
+
 type IsAny<T> = 0 extends 1 & T ? true : false;
 type CapabilityRequirement<P extends object> = IsAny<P> extends true
   ? { capabilities?: Record<string, AgentCapabilityDeclaration> }
@@ -109,11 +127,20 @@ type CapabilityRequirement<P extends object> = IsAny<P> extends true
     ? { capabilities?: never }
     : { capabilities: AgentCapabilities<P> };
 
+type ProfileCapabilityRequirement<P extends object> = IsAny<P> extends true
+  ? { capabilities?: Record<string, AgentProfileCapabilityDeclaration> }
+  : [FunctionPropKeys<P>] extends [never]
+    ? { capabilities?: never }
+    : { capabilities: AgentProfileCapabilities<P> };
+
 interface AgentSpecBase<P extends object, S extends Record<string, unknown>, O> {
   /** The agent kind — becomes the class name / profile name / DO binding. */
   agentName: string;
   impl: AgentImpl<P, S, O>;
   initialState: S;
+  /** Authored model identifier. Flue emits it directly; other targets retain
+   * it as profile metadata and may resolve it through their model adapter. */
+  model?: string;
   /** Human-readable one-liner. Embedded in generated artifacts (the cloudflare
    *  class doc, the flue profile `description`) and, when this agent fills a tool
    *  slot, surfaced as the `agentTool` description — so the contract is visible
@@ -157,6 +184,32 @@ export type AgentSpec<
   S extends Record<string, unknown> = any,
   O = unknown,
 > = AgentSpecBase<P, S, O> & CapabilityRequirement<P>;
+
+/**
+ * Metadata authored next to a normal JSX function component. This mirrors a
+ * Flue AgentProfile: the file owns behavior and explicit authority, while the
+ * compiler supplies the reusable boundary wrapper and target-specific class.
+ *
+ * Identity and model selection remain authored policy. The compiler does not
+ * infer either from an export or filename.
+ */
+export type AgentProfile<
+  P extends object = any,
+  S extends Record<string, unknown> = any,
+  O = unknown,
+> = Omit<AgentSpecBase<P, S, O>, "agentName" | "impl"> &
+  { name: string; model: string } &
+  ProfileCapabilityRequirement<P>;
+
+/** Type-check an authored profile without turning the implementation into a
+ * boundary. `agentComponent` remains a compiler/runtime primitive. */
+export function defineAgentProfile<
+  P extends object,
+  S extends Record<string, unknown>,
+  O = unknown,
+>(profile: AgentProfile<P, S, O>): AgentProfile<P, S, O> {
+  return profile;
+}
 
 /** Erased spec shape used by heterogeneous compiler graphs. */
 export type AnyAgentSpec = AgentSpecBase<any, any, any> & {
@@ -353,6 +406,45 @@ function parseCapabilityValue(
       `[agent-jsx] boundary "${boundaryName}" (kind ${agentName}): capability "${capability}" ${phase} failed schema — ${detail}`
     );
   }
+}
+
+/**
+ * Compiler lowering for a normal component + AgentProfile source module.
+ *
+ * Application code should normally get this call from a generated companion
+ * module (see compile/emit-agent-module.ts). Keeping the lowering here makes
+ * the generated file tiny and preserves one boundary implementation for the
+ * simulator, Cloudflare, and Flue targets.
+ */
+export function compileAgent<
+  P extends object,
+  S extends Record<string, unknown>,
+  O = unknown,
+>(
+  impl: AgentImpl<P, S, O>,
+  profile: AgentProfile<P, S, O>
+): AgentClass<P, S, O> {
+  const agentName = profile.name;
+
+  const { name: _profileName, capabilities: sourceCapabilities, ...metadata } = profile as
+    AgentProfile<P, S, O> & {
+      capabilities?: Record<string, AgentProfileCapabilityDeclaration>;
+    };
+  const capabilities = sourceCapabilities
+    ? Object.fromEntries(
+        Object.entries(sourceCapabilities).map(([key, declaration]) => [
+          key,
+          typeof declaration === "string" ? { kind: declaration } : declaration,
+        ])
+      )
+    : undefined;
+
+  return agentComponent({
+    ...metadata,
+    agentName,
+    impl,
+    ...(capabilities ? { capabilities } : {}),
+  } as unknown as AgentSpec<P, S, O>);
 }
 
 /**

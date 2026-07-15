@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./agent-component": "./src/agent-component.tsx",
+    "./compile/emit-agent-module": "./src/compile/emit-agent-module.ts",
+    "./jsx-runtime": "./src/jsx-data-runtime.ts",
+    "./jsx-dev-runtime": "./src/jsx-data-runtime.ts"
+  },
   "imports": {
     "#agentjsx/jsx-runtime": "./src/jsx-data-runtime.ts",
     "#agentjsx/jsx-dev-runtime": "./src/jsx-data-runtime.ts"

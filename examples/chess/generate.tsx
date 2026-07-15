@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { emitAgentModule } from "../../src/compile/emit-agent-module.ts";
 import { discoverAgents, type AgentModule } from "../../src/compile/graph.ts";
 import {
   emitFlue,
@@ -29,6 +30,23 @@ const childProfiles = rootNode.directChildren.map((kind) => ({
 const output = new URL("./generated/", import.meta.url);
 mkdirSync(output, { recursive: true });
 const write = (name: string, source: string) => writeFileSync(new URL(name, output), source);
+
+write(
+  "openai-chess-player.compiled.tsx",
+  emitAgentModule({
+    sourceImport: "../openai-chess-player.agent.tsx",
+    exportName: "OpenAIAgent",
+    runtimeImport: "../../../src/agent-component.tsx",
+  }),
+);
+write(
+  "gemini-chess-player.compiled.tsx",
+  emitAgentModule({
+    sourceImport: "../gemini-chess-player.agent.tsx",
+    exportName: "GeminiAgent",
+    runtimeImport: "../../../src/agent-component.tsx",
+  }),
+);
 
 write(
   "chess-match.flue.ts",
@@ -63,4 +81,4 @@ for (const child of graph.slice(1)) {
   );
 }
 
-console.log(`generated ${graph.length + 1} chess Flue modules`);
+console.log(`generated 2 agent boundary companions + ${graph.length + 1} chess Flue modules`);

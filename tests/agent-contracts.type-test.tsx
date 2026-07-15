@@ -1,6 +1,12 @@
 /** Compile-time acceptance tests for Agent and higher-level binders. */
 
-import { Agent, agentComponent, createAgentBinder, type AgentOutputOf } from "../src/agent-component.tsx";
+import {
+  Agent,
+  agentComponent,
+  createAgentBinder,
+  defineAgentProfile,
+  type AgentOutputOf,
+} from "../src/agent-component.tsx";
 
 interface Turn extends Record<string, unknown> {
   side: "white" | "black";
@@ -97,4 +103,24 @@ agentComponent<MissingCapabilityProps, Record<string, never>>({
   initialState: {},
   sampleProps: { done: () => {} },
   impl: () => null,
+});
+
+// @ts-expect-error source profiles also require every function capability.
+defineAgentProfile<MissingCapabilityProps, Record<string, never>>({
+  name: "missing-profile-capability",
+  model: "test/model",
+  initialState: {},
+  sampleProps: { done: () => {} },
+});
+
+// @ts-expect-error source profiles never infer reusable identity.
+defineAgentProfile<Record<string, never>, Record<string, never>>({
+  model: "test/model",
+  initialState: {},
+});
+
+// @ts-expect-error source profiles never infer model policy.
+defineAgentProfile<Record<string, never>, Record<string, never>>({
+  name: "missing-model",
+  initialState: {},
 });

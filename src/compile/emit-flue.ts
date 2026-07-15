@@ -39,7 +39,9 @@ export interface FlueEmitOptions {
    *  task input / resting props), impl (resting render), and the getPrompt seam.
    *  The resting instructions are derived from the spec, not a passed element. */
   spec: AnyAgentSpec;
-  model: string;
+  /** Overrides the authored profile model for this target. Legacy
+   * agentComponent specs without a model must still pass this explicitly. */
+  model?: string;
   /** Export name + import path of the agentComponent — imported for spawnPlan's
    *  `.spec.impl` and structural state typing. */
   componentName: string;
@@ -100,6 +102,9 @@ export function emitFlueChild(child: ChildAgentSpec, promptBudget = 400, opts: F
   const descriptionLine = spec.description
     ? `  description: ${JSON.stringify(spec.description)},\n`
     : "";
+  const modelLine = spec.model
+    ? `  model: ${JSON.stringify(spec.model)},\n`
+    : "";
   const diagnostics = formatTargetDiagnosticsForComment(flueChildTargetDiagnostics(child));
   const roots = evaluateComponent(spec.impl, {
     ...(spec.sampleProps ?? {}),
@@ -126,7 +131,7 @@ import { defineAgentProfile } from "@flue/runtime";
 
 export const ${profileExport} = defineAgentProfile({
   name: ${JSON.stringify(spec.agentName)},
-${descriptionLine}  instructions: ${JSON.stringify(instructions)},
+${descriptionLine}${modelLine}  instructions: ${JSON.stringify(instructions)},
   // Parent props arrive as the delegated task input; the child's onResult
   // callback is realized as the task RETURN value (flue's session.task).
 });
@@ -204,7 +209,7 @@ ${runtimeImports}${childImports}
 
 export const ${profileExport} = defineAgentProfile({
   name: ${JSON.stringify(spec.agentName)},
-${descriptionLine}  instructions: ${JSON.stringify(instructions)},
+${descriptionLine}${modelLine}  instructions: ${JSON.stringify(instructions)},
   // Nested subagent profiles — this level's static hierarchy as flue's native
   // \`subagents:\` array (defineAgentProfile carrying subagents, exactly the
   // sketch). session.task(..., { agent }) resolves them.
@@ -216,6 +221,12 @@ ${spawnPlanBlock}`;
 export function emitFlue(o: FlueEmitOptions): string {
   const rt = o.runtimeImport ?? "../../src";
   const spec = o.spec;
+  const model = o.model ?? spec.model;
+  if (!model) {
+    throw new Error(
+      `[agent-jsx] flue agent "${spec.agentName}" needs profile.model or FlueEmitOptions.model`
+    );
+  }
   const childProfiles = o.childProfiles ?? [];
   const slotBindings = (o.toolSlots ?? []).filter((binding) => binding.provider === spec.agentName);
   // Resting instructions derived from the spec: the <prompt> tree rendered at
@@ -368,7 +379,7 @@ const PROPS = ${JSON.stringify(spec.sampleProps ?? {})};
 // tools/subagents/…). No \`name\` field — flue derives the agent name from the
 // module/route, not the config object.
 export default defineAgent(() => ({
-  model: ${JSON.stringify(o.model)},
+  model: ${JSON.stringify(model)},
   instructions: ${JSON.stringify(instructions)},
 ${subagentsLine}
 ${toolsBlock}

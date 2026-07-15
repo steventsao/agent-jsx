@@ -7,6 +7,7 @@ import { defineAgentProfile } from "@flue/runtime";
 export const gemini_chess_playerProfile = defineAgentProfile({
   name: "gemini-chess-player",
   description: "Chooses one legal chess move using a Gemini model.",
+  model: "google/gemini-2.5-flash",
   instructions: "[system] You are the Gemini chess player. Return one legal move as JSON: {\"move\":\"e2e4\",\"note\":\"short reason\"}. The move must be UCI notation and must appear in legalMoves. Do not add prose outside the JSON.\nSide: white. Ply: 0. FEN: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1. legalMoves: e2e4, d2d4, g1f3.",
   // Parent props arrive as the delegated task input; the child's onResult
   // callback is realized as the task RETURN value (flue's session.task).

@@ -15,10 +15,11 @@ import { ChessMatch } from "../match.tsx";
 import { openai_chess_playerProfile } from "./openai-chess-player.flue.ts";
 import { gemini_chess_playerProfile } from "./gemini-chess-player.flue.ts";
 
+
 // State + props derived structurally from the component spec (no state-type
 // string, no per-emit propsJson): the spec is the single analyzed source.
 type State = typeof ChessMatch.spec.initialState & Record<string, unknown>;
-const PROPS = {} as const;
+const PROPS = {};
 
 // defineAgent's initializer returns an AgentRuntimeConfig (model/instructions/
 // tools/subagents/…). No `name` field — flue derives the agent name from the
@@ -26,7 +27,7 @@ const PROPS = {} as const;
 export default defineAgent(() => ({
   model: "openrouter/openai/gpt-5-mini",
   instructions: "",
-  // Declared subagent profiles are flue's binding table for session.task(..., { agent }).
+  // Explicit subagent/capability roster for session.task(..., { agent }).
   subagents: [openai_chess_playerProfile, gemini_chess_playerProfile],
 
   // No static tools: the component's <tool> is state-gated (e.g. page-oncall
@@ -60,6 +61,14 @@ export function spawnPlan(state: State) {
     .filter((r) => r.kind === "subagent")
     .map((r) => {
       const { kind, ...input } = r.config;
-      return { stableId: r.name, agent: String(kind), input, emits: "__emit" in r.handlers };
+      return {
+        stableId: r.name,
+        agent: String(kind),
+        input,
+        emits: r.bindings?.__emit?.kind === "continuation",
+        bindings: r.bindings ?? {},
+        resultBinding: Object.entries(r.bindings ?? {}).find(([, b]) => b.kind === "result")?.[0] ?? null,
+        target: r.target ?? null,
+      };
     });
 }
