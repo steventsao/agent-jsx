@@ -4,5 +4,7 @@
   "initialVersions": {
     "@steventsao/agent-jsx": "0.0.0"
   },
-  "changesets": []
+  "changesets": [
+    "tidy-pandas-compile"
+  ]
 }
