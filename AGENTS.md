@@ -44,7 +44,7 @@ Never edit the package version or `CHANGELOG.md` by hand. The Changesets release
 
 To promote the project out of alpha, make a dedicated pull request that runs `bun run changeset pre exit`; do not delete or edit `pre.json` manually.
 
-The first npm publish needs a fresh granular `NPM_TOKEN` repository secret with publish access and 2FA bypass enabled because npm trusted publishing can only be configured after the package exists. After that first release, configure the package's npm trusted publisher as:
+The package's npm trusted publisher is configured as:
 
 - GitHub owner: `steventsao`
 - Repository: `agent-jsx`
@@ -52,4 +52,4 @@ The first npm publish needs a fresh granular `NPM_TOKEN` repository secret with 
 - Environment: `npm`
 - Allowed action: `npm publish`
 
-Then delete the `NPM_TOKEN` secret. The workflow will use GitHub OIDC and npm provenance automatically.
+Do not add an `NPM_TOKEN` publish secret. The workflow uses GitHub OIDC and npm provenance automatically.

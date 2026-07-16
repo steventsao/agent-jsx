@@ -59,6 +59,3 @@ jobs:
           commitMode: github-api
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Needed only for the first publish. Remove the secret after npm
-          # trusted publishing is connected to this workflow.
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
