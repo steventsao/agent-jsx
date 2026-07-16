@@ -33,7 +33,7 @@ The public package is `@steventsao/agent-jsx`. It is in alpha prerelease mode an
 
 Every pull request with a user-visible package change must add a changeset with `bun run changeset`. Choose `@steventsao/agent-jsx`, select the impact, and write a concise changelog sentence. Tests, examples, documentation, and CI-only changes do not require one. See [.changeset/README.md](.changeset/README.md) for the contributor-facing summary.
 
-Never edit the package version or `CHANGELOG.md` by hand. The Changesets release workflow owns both. While `.changeset/pre.json` is in `alpha` mode, release pull requests produce versions such as `0.1.0-alpha.0`, `0.1.0-alpha.1`, and publish only to npm's `alpha` dist-tag.
+Never edit the package version or `CHANGELOG.md` by hand. The Changesets release workflow owns both. While `.changeset/pre.json` is in `alpha` mode, release pull requests produce versions such as `0.1.0-alpha.0` and `0.1.0-alpha.1`, and publish them to npm's `alpha` dist-tag. Because the package has not had a normal release yet, npm also retains `latest` on the newest alpha; the first stable release will take ownership of `latest`.
 
 ## Release flow
 
