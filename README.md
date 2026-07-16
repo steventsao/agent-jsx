@@ -9,6 +9,17 @@ Cloudflare Agents or Flue wiring.
 
 API reference: <https://steventsao.github.io/agent-jsx/api/>
 
+## Install
+
+Alpha releases are published under the `alpha` dist-tag:
+
+```sh
+bun add @steventsao/agent-jsx@alpha
+```
+
+Import authored agents from `@steventsao/agent-jsx/agent`, or use the explicit
+compiler and JSX-runtime subpath exports documented in `package.json`.
+
 ## The authoring model
 
 An agent is a hierarchy-free class modeled after `cloudflare/agents`. It owns
@@ -189,6 +200,20 @@ The root suite covers type failures, explicit capability routing, schema
 validation, generated ACLs, reactive execution, chess alternation, and
 byte-for-byte fixtures. The compatibility suites execute generated code against
 the real target packages rather than mocks.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the package checks and Changesets-based
+alpha release process.
+
+## Further reading
+
+- [COMPAT.md](COMPAT.md) — the compatibility-test contract.
+- [COMPAT-REPORT.md](COMPAT-REPORT.md) — findings from the real target runtimes.
+- [TODOS.md](TODOS.md) — outstanding release and project operations.
+- [PDF-PIPELINE.md](PDF-PIPELINE.md) and [PARSEBENCH-RUN.md](PARSEBENCH-RUN.md) — the compiled PDF pipeline and its live evaluation.
+- [Think target](docs/think-target.md) and [agent-tool investigation](docs/agent-tools-investigation.md) — model-driven Cloudflare compilation.
+- [Cloudflare adapter](docs/cloudflare-adapter.md) — the original host-to-Durable-Object mapping.
+- [Agent-first CLI](docs/agent-first-cli.md) — the CLI direction note.
+- [Fixture guide](fixtures/README.md) — the compiler's byte-locked output families.
 
 Useful entry points:
 

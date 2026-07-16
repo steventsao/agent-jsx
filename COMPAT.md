@@ -6,9 +6,9 @@ Status: **layers 1–3 GREEN** (commit 83fa675, see COMPAT-REPORT.md). **v0.5 GR
 
 | Layer | Runner | Command | What it proves | Status |
 |---|---|---|---|---|
-| 1. Unit | bun test | `bun test tests` | parity theorem holds; emitters honor `runtimeImport`; artifact graph is react-machinery-free; wrangler fragment valid | parity ✅ / emit ❌ RED |
-| 2. cloudflare | vitest-pool-workers (real workerd) | `cd compat/cloudflare && bun install && bun run test` | generated classes run on the REAL `agents` pkg: spawn w/ props, prop-change push, callback→parent dispatch, despawn, idempotent wake | ❌ RED (deps not installed, emitter options missing) |
-| 3. flue | bun test + local `@flue/runtime` | `cd compat/flue && bun install && bun run test` | generated modules satisfy flue's own validators; spawnPlan derives stable-id descriptors | ❌ RED |
+| 1. Unit | bun test | `bun test tests` | parity theorem holds; emitters honor `runtimeImport`; artifact graph is react-machinery-free; wrangler fragment valid | ✅ GREEN |
+| 2. cloudflare | vitest-pool-workers (real workerd) | `cd compat/cloudflare && bun install --frozen-lockfile && bun run test` | generated classes run on the REAL `agents` pkg: spawn w/ props, prop-change push, callback→parent dispatch, despawn, idempotent wake | ✅ GREEN |
+| 3. flue | Vitest + real `@flue/runtime` | `cd compat/flue && bun install --frozen-lockfile && bun run test` | generated modules satisfy flue's own validators; spawnPlan derives stable-id descriptors | ✅ GREEN |
 
 ## Rules of engagement (for whoever makes this green)
 
@@ -30,11 +30,11 @@ Status: **layers 1–3 GREEN** (commit 83fa675, see COMPAT-REPORT.md). **v0.5 GR
 
 ---
 
-# v0.5 — the reactive flue workflow executor (RED)
+# v0.5 — the reactive flue workflow executor (GREEN)
 
 **Goal:** flue is the v0.5 deploy target, but flue has no state→render loop. The missing piece is a generated `defineWorkflow` that executes one turn of reactive composition: evaluate the component at state → delegate fresh `spawnPlan` children via `session.task` → fold each result back through that record's own `onResult` closure → repeat until a round adds nothing. Despawn/cancel is explicitly OUT of scope (a completed task can't be unspawned) — that's v1/CF semantics.
 
-**Contract tests (all currently RED):**
+**Contract tests (all GREEN):**
 
 | Test | Defines |
 |---|---|
@@ -46,11 +46,11 @@ Status: **layers 1–3 GREEN** (commit 83fa675, see COMPAT-REPORT.md). **v0.5 GR
 
 ---
 
-# v0.6 — method props: request/response RPC with return values (RED)
+# v0.6 — method props: request/response RPC with return values (GREEN)
 
 **Goal:** a function prop is a *capability with a return value*, not just an event. `<Investigator lookupRunbook={(s) => ...} />` must let the child `await props.lookupRunbook(site)` like a local function while the parent's freshest closure computes the answer from parent state. The props a parent passes are the child's capability grant — a declarative ACL over the parent's RPC surface.
 
-**Contract tests (RED):**
+**Contract tests (GREEN):**
 
 | Test | Defines |
 |---|---|

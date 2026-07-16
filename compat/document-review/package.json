@@ -5,7 +5,7 @@
   "description": "Generated Cloudflare Worker UI/API for the document review human-input example.",
   "scripts": {
     "generate": "cd scripts && bun generate.tsx",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun run generate && tsc --noEmit",
     "test": "bun run generate && vitest run",
     "deploy": "bun run generate && wrangler deploy"
   },

@@ -8,7 +8,8 @@
   "description": "Proves generated artifacts run on the REAL cloudflare/agents package inside workerd (vitest-pool-workers) — no mocks, no dev server.",
   "scripts": {
     "generate": "bun scripts/generate.tsx",
-    "typecheck": "tsc --noEmit",
+    "generate:deploy": "bun scripts/generate-deploy.tsx",
+    "typecheck": "bun run generate && bun run generate:deploy && tsc --noEmit",
     "test": "bun run generate && vitest run"
   },
   "dependencies": {
