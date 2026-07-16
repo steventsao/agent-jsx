@@ -208,6 +208,7 @@ alpha release process.
 
 - [COMPAT.md](COMPAT.md) — the compatibility-test contract.
 - [COMPAT-REPORT.md](COMPAT-REPORT.md) — findings from the real target runtimes.
+- [TODOS.md](TODOS.md) — outstanding release and project operations.
 - [PDF-PIPELINE.md](PDF-PIPELINE.md) and [PARSEBENCH-RUN.md](PARSEBENCH-RUN.md) — the compiled PDF pipeline and its live evaluation.
 - [Think target](docs/think-target.md) and [agent-tool investigation](docs/agent-tools-investigation.md) — model-driven Cloudflare compilation.
 - [Cloudflare adapter](docs/cloudflare-adapter.md) — the original host-to-Durable-Object mapping.
