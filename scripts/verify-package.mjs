@@ -1,4 +1,56 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+
+const packageJson = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+);
+const packOutput = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+  cwd: new URL("..", import.meta.url),
+  encoding: "utf8",
+});
+const packResults = JSON.parse(packOutput);
+
+assert.equal(packResults.length, 1, "npm pack must produce exactly one package");
+
+const [packResult] = packResults;
+assert.equal(packResult.name, packageJson.name, "packed package name must match package.json");
+assert.equal(packResult.version, packageJson.version, "packed version must match package.json");
+
+const packedFiles = new Set(packResult.files.map(({ path }) => path));
+const allowedRootFiles = new Set(["LICENSE", "README.md", "package.json"]);
+
+for (const path of allowedRootFiles) {
+  assert.ok(packedFiles.has(path), `npm tarball must contain ${path}`);
+}
+
+for (const path of packedFiles) {
+  assert.ok(
+    path.startsWith("dist/") || allowedRootFiles.has(path),
+    `npm tarball must not contain repository-only file: ${path}`,
+  );
+}
+
+function assertPackedExport(target, exportName) {
+  assert.equal(typeof target, "string", `${exportName} must resolve to a file path`);
+  const path = target.replace(/^\.\//, "");
+  assert.ok(packedFiles.has(path), `${exportName} target must exist in the npm tarball: ${path}`);
+}
+
+for (const [exportName, conditions] of Object.entries(packageJson.exports)) {
+  if (typeof conditions === "string") {
+    assertPackedExport(conditions, exportName);
+    continue;
+  }
+
+  assertPackedExport(conditions.types, `${exportName} types`);
+  assertPackedExport(conditions.import, `${exportName} import`);
+  assert.equal(
+    conditions.default,
+    conditions.import,
+    `${exportName} default and import conditions must resolve identically`,
+  );
+}
 
 const entrypoints = [
   ["@steventsao/agent-jsx/agent", ["Agent", "callable", "compileAgentClass", "composeAgent", "result"]],
@@ -15,4 +67,6 @@ for (const [specifier, expectedExports] of entrypoints) {
   }
 }
 
-console.log(`Verified ${entrypoints.length} package entrypoints with Node.js.`);
+console.log(
+  `Verified ${packedFiles.size} packed files and ${entrypoints.length} package entrypoints with Node.js.`,
+);
