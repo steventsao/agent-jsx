@@ -1,6 +1,6 @@
 {
   "name": "@steventsao/agent-jsx",
-  "version": "0.0.0",
+  "version": "0.1.0-alpha.0",
   "description": "Compose typed agents as JSX and compile them to Cloudflare Agents, Cloudflare Think, or Flue.",
   "license": "Apache-2.0",
   "author": "Steven Tsao",
