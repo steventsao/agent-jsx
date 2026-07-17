@@ -11,7 +11,7 @@
  *   - children are their own Think subclasses (spawned per tool-call as facets).
  *
  * Contract under test (emitted-string level; compat/think proves it on real
- * workerd against @cloudflare/think@0.12.1 + agents@0.17.3):
+ * workerd against @cloudflare/think@0.13.0 + agents@0.17.4):
  *   - the slot binding onCall → agentTool(ToolWorkerDurable, …) (prop-key name);
  *   - a plain nested child → agentTool named by KIND;
  *   - a static <tool> → getTools()[name] = tool(...) via the base toolByName;

@@ -13,8 +13,9 @@ export interface CallableMetadata {
 const callableMethods = new WeakMap<AnyMethod, CallableMetadata>();
 const CALLABLE_REF = Symbol.for("agent-jsx.callable-ref");
 
-/** Cloudflare/agents-style method decorator. It marks an authored method as
- * public RPC without implying any parent, child, or composition relationship. */
+/** Portable public-operation marker. Cloudflare's emitted class also uses its
+ * client-facing `@callable()` decorator; internal child calls remain native DO
+ * RPC behind the compiler's explicit boundary ACL. No hierarchy is implied. */
 type CallableDecorator = {
   <This, Args extends unknown[], Return>(
     target: (this: This, ...args: Args) => Return,

@@ -70,6 +70,12 @@ describe("emitCloudflare", () => {
     expect(out.agents).toContain("setProps");
   });
 
+  it("uses the async schedule inventory API supported by current Agents and facets", () => {
+    const out = emitCloudflare(root, children, analysis(), { runtimeImport: "./runtime" });
+    expect(out.agents).toContain("await this.listSchedules()");
+    expect(out.agents).not.toContain("this.getSchedules()");
+  });
+
   it("embeds initial state as JSON and imports NO initial-state export", () => {
     const out = emitCloudflare(root, children, analysis(), { runtimeImport: "./runtime" });
     // Initial state is embedded as a JSON literal derived from spec.initialState…

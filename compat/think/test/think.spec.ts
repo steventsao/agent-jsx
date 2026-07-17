@@ -1,6 +1,6 @@
 /**
  * THE think compat proof: the generated `class X extends Think<Env>` classes run
- * on the REAL @cloudflare/think@0.12.1 + agents@0.17.3 inside real workerd
+ * on the REAL @cloudflare/think@0.13.0 + agents@0.17.4 inside real workerd
  * (vitest-pool-workers — headless, no dev server, no live LLM).
  *
  * What is provable WITHOUT a model (the seam: getModel inherits Think's throwing

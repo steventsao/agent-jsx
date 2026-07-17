@@ -173,8 +173,8 @@ export default defineAgent(() => ({
 
 ## What the compat proof establishes (`compat/think`, real workerd)
 
-Pinned to `agents@0.17.3` + `@cloudflare/think@0.12.1` (the 0.8.7 packages stay
-untouched). The seam for testing WITHOUT a live LLM is a **mock `LanguageModelV3`**
+Pinned to `agents@0.17.4` + `@cloudflare/think@0.13.0`. The seam for testing
+WITHOUT a live LLM is a **mock `LanguageModelV3`**
 (a `doStream` returning AI-SDK stream parts), the pattern the playground's
 `LoopToolTestAgent` uses (`packages/think/src/tests/agents/assistant-agent-loop.ts`).
 Provable in real workerd via `runInDurableObject` (no `@callable` needed):

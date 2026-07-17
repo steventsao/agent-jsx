@@ -249,7 +249,7 @@ abstract class FiberAgentBase<S extends Record<string, unknown>> extends Agent<G
 
     // schedules & sensors: converge durable rows against desired, by payload key
     const timed = desired.filter((r) => r.kind === "schedule" || r.kind === "sensor");
-    const live = await this.getSchedules();
+    const live = await this.listSchedules();
     const liveByKey = new Map(live.map((s) => [(s.payload as { key?: string })?.key, s]));
     for (const rec of timed) {
       const key = `${rec.kind}:${rec.name}`;
@@ -455,7 +455,7 @@ export class ToolWorkerDurable extends FiberAgentBase<ChildRuntimeState & Record
   }
 
   async shutdown() {
-    for (const s of await this.getSchedules()) await this.cancelSchedule(s.id);
+    for (const s of await this.listSchedules()) await this.cancelSchedule(s.id);
     this.setState({ ...this.state, __props: null, __children: [] });
   }
 
@@ -536,7 +536,7 @@ export class ToolSummarizerDurable extends FiberAgentBase<ChildRuntimeState & Re
   }
 
   async shutdown() {
-    for (const s of await this.getSchedules()) await this.cancelSchedule(s.id);
+    for (const s of await this.listSchedules()) await this.cancelSchedule(s.id);
     this.setState({ ...this.state, __props: null, __children: [] });
   }
 

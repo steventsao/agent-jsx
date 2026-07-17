@@ -115,6 +115,12 @@ player’s result to that callable. Nesting by itself grants no RPC access, and
 there is no method-name heuristic. Serializable props remain child input;
 function props must be explicitly branded at the composition site.
 
+Here `@callable()` is agent-jsx's portable public-operation marker. The
+Cloudflare emitter also applies Cloudflare's client-facing decorator to the
+generated class, while Agent-to-Agent calls use native Durable Object RPC
+behind the generated boundary ACL. Authored code therefore does not depend on
+one target's transport meaning for the decorator.
+
 `Board` is ordinary reusable composition code. It selects the active seat and
 injects only `side` plus a stable instance name; the compiler has no chess
 special case. See [examples/chess](examples/chess/) for the complete game,
@@ -152,6 +158,25 @@ This follows the grain of both projects: Cloudflare provides child Durable
 Objects, typed RPC, and `agentTool`; Flue provides named profiles, rosters,
 tools, and retained child task sessions. agent-jsx supplies the typed
 desired-state composition layer above them.
+
+## Compatibility posture
+
+The portable contract deliberately stops at stable kind identity
+(`static agentName`), stable mounted-instance identity (`name`), JSON-like
+props, explicit callable grants, and target-neutral prompt/tool/skill
+declarations. Runtime sessions, transport envelopes, recovery, streaming,
+forks, sandboxes, and public routes remain adapter or application concerns.
+
+| Target | Exact compatibility baseline | Proof |
+|---|---|---|
+| Cloudflare reconcile | `agents@0.17.4` | generated classes typecheck and run in real workerd |
+| Cloudflare Think | `agents@0.17.4`, `@cloudflare/think@0.13.0` | native `agentTool` classes run in real workerd; chess target also typechecks |
+| Flue | `@flue/runtime@1.0.0-beta.9` | real runtime validators, profiles, tools, subagent rosters, and workflow execution |
+
+The upstream projects are pre-1.0 and moving quickly, so exact pins and the
+compatibility suites—not structural resemblance—define support. See
+[upstream alignment](docs/upstream-alignment.md) for the roadmap/discussion
+audit, portable design rules, and intentionally target-specific seams.
 
 ## Secrets and the chess Worker
 
@@ -211,6 +236,7 @@ alpha release process.
 - [TODOS.md](TODOS.md) — outstanding release and project operations.
 - [PDF-PIPELINE.md](PDF-PIPELINE.md) and [PARSEBENCH-RUN.md](PARSEBENCH-RUN.md) — the compiled PDF pipeline and its live evaluation.
 - [Think target](docs/think-target.md) and [agent-tool investigation](docs/agent-tools-investigation.md) — model-driven Cloudflare compilation.
+- [Upstream alignment](docs/upstream-alignment.md) — Cloudflare Agents and Flue roadmap/discussion audit and portability guardrails.
 - [Cloudflare adapter](docs/cloudflare-adapter.md) — the original host-to-Durable-Object mapping.
 - [Agent-first CLI](docs/agent-first-cli.md) — the CLI direction note.
 - [Fixture guide](fixtures/README.md) — the compiler's byte-locked output families.

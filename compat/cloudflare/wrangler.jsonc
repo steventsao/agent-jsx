@@ -1,7 +1,7 @@
 // Real worker config for the compat proof. Bindings/migrations mirror the
 // emitter's generated fragment (src/generated/uptime.wrangler.jsonc). The
-// compat date + nodejs runner flags match the cloudflare-agents-playground
-// test config (the known-good setup for agents 0.8.5 under vitest-pool-workers).
+// compat date + nodejs runner flags match the cloudflare/agents test setup for
+// agents 0.17.4 under vitest-pool-workers.
 {
   "name": "agent-jsx-compat",
   "main": "src/worker.ts",

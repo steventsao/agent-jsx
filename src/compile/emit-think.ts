@@ -17,11 +17,11 @@
  *
  * getModel() is emitted when the authored spec carries an explicit model. Older
  * low-level specs without one inherit Think's throwing default and can still be
- * overridden by a consumer or test. Pinned to agents@0.17.3 +
- * @cloudflare/think@0.12.1; the
+ * overridden by a consumer or test. Pinned to agents@0.17.4 +
+ * @cloudflare/think@0.13.0; the
  * generated runTurnWithTrace bridge retains Think's public text/reasoning
  * stream while binding the latest composition props for that turn. The proven
- * 0.8.x reconcile runtime is untouched. <sensor>/<schedule>/<task> have
+ * reconcile runtime is independently compatibility-tested. <sensor>/<schedule>/<task> have
  * no think-mode mapping (reconcile's job) → loud target diagnostics.
  */
 
