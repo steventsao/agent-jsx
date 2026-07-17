@@ -40,7 +40,7 @@ describe("emitCloudflareClientApi", () => {
 
     expect(out.api).toContain("export async function handleDocumentReviewApi");
     expect(out.api).toContain("export async function handleDocumentReviewAgentRequest");
-    expect(out.api).toContain(`import { routeAgentRequest } from "agents";`);
+    expect(out.api).toContain(`import { getAgentByName, routeAgentRequest } from "agents";`);
     expect(out.api).toContain(`if (path === "/api/state"`);
     expect(out.api).toContain(`path === "/api/channels/document"`);
     expect(out.api).toContain(`path === "/api/try-harder"`);
@@ -50,7 +50,9 @@ describe("emitCloudflareClientApi", () => {
     expect(out.api).toContain("class DocumentReviewGeneratedClient");
     expect(out.api).toContain(`/agents/\${AGENT_NAMESPACE}/\${encodedAgent}\${normalizedPath}`);
     expect(out.api).toContain("const AGENT_NAMESPACE = \"document-review\"");
-    expect(out.api).not.toContain("getAgentByName");
+    expect(out.api).toContain("await getAgentByName(");
+    expect(out.api).toContain("env.DOCUMENT_REVIEW as never");
+    expect(out.api).toContain("return agent.fetch(req);");
     expect(out.api).not.toContain("reconcile?(): Promise<void>;");
     expect(out.api).not.toContain("await agent.reconcile?.();");
     expect(out.api).toContain("const childUrl = (kind, name, path) =>");

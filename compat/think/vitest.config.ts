@@ -1,5 +1,5 @@
 // Runs the generated THINK-mode classes inside real workerd (vitest-pool-workers)
-// against real @cloudflare/think@0.12.1 + agents@0.17.3 — no dev server, no mocks
+// against real @cloudflare/think@0.13.0 + agents@0.17.4 — no dev server, no mocks
 // for the framework (only getModel is a test-supplied mock where a turn is driven).
 // Mirrors the cloudflare-agents-playground think test config (cloudflareTest +
 // a warmup setup file); the agents/vite plugin renders our react-free components.

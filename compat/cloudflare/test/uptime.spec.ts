@@ -86,7 +86,7 @@ describe("generated classes on real cloudflare/agents", () => {
 
   it("spawns the child with props when state says a site is down", async () => {
     // No explicit reconcile: this asserts the production path —
-    // setState → onStateChanged (agents 0.8.5; onStateUpdate is deprecated,
+    // setState → onStateChanged (agents 0.17.4; onStateUpdate is deprecated,
     // packages/agents/src/index.ts:685-1121) → reconcile.
     await runInDurableObject(await parentStub(), async (agent: AnyAgent) => {
       agent.setState(incident(4));

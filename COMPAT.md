@@ -1,6 +1,11 @@
 # Compat TDD: prove the emitters against the real runtimes
 
-Status: **layers 1–3 GREEN** (commit 83fa675, see COMPAT-REPORT.md). **v0.5 GREEN** (reactive flue workflow executor — see COMPAT-REPORT.md #12–#17). **v0.6 GREEN** (method props: request/response RPC with return values — see COMPAT-REPORT.md #21–#23). The v0.5 and v0.6 sections at the bottom are the contracts they were built to satisfy.
+Status: **layers 1–3 GREEN** (see COMPAT-REPORT.md). Cloudflare reconcile is
+currently pinned to `agents@0.17.4`; Think is pinned to `agents@0.17.4` plus
+`@cloudflare/think@0.13.0`; Flue is pinned to the current published
+`@flue/runtime@1.0.0-beta.9`. **v0.5 GREEN** (reactive flue workflow executor —
+see COMPAT-REPORT.md #12–#17). **v0.6 GREEN** (method props: request/response RPC
+with return values — see COMPAT-REPORT.md #21–#23).
 
 ## The three layers
 
@@ -15,8 +20,14 @@ Status: **layers 1–3 GREEN** (commit 83fa675, see COMPAT-REPORT.md). **v0.5 GR
 1. **Fix emitters/runtime, not tests.** Assertions in `tests/emit.test.ts`, `compat/cloudflare/test/uptime.spec.ts`, `compat/flue/test/flue-compat.test.ts` define the contract. API-shape details inside tests (e.g. `runInDurableObject` typing, how state is seeded) may be adjusted to match the real packages; the BEHAVIOR asserted may not be weakened. If a test encodes a factual mistake about a runtime, fix it and leave a comment citing the runtime source file that proves the correction.
 2. **No mocks of `agents` or `@flue/runtime`.** The point is reality.
 3. **Real references when APIs disagree with the emitters:**
-   - cloudflare/agents source: `~/dev/cloudflare-agents-playground/packages/agents/src/index.ts` (v0.8.5) — `schedule(when, callback, payload, {idempotent})`, `getSchedules()`, `cancelSchedule(id)`, `getAgentByName`, `setState`, `onStart`, facets. Their e2e tests (same repo) show working vitest-pool-workers setup — mirror their config choices (compat flags, versions) if ours fight.
-   - flue source: `~/dev/flue` (READ-ONLY — never modify, never run its deploy). Authoring API per `README.md` + `packages/runtime`. If `@flue/runtime` needs building: `pnpm install` + repo build task inside the checkout is allowed. `defineAgentProfile`/`defineAgent` exact signatures live there — conform the emitters to whatever main actually exports.
+   - cloudflare/agents source: the pinned `compat/cloudflare/node_modules/agents`
+     package plus the upstream repository's `packages/agents`, `packages/think`,
+     `docs`, and accepted `design` records. Prefer async `listSchedules()` over
+     the deprecated synchronous inventory API.
+   - flue source: the pinned `compat/flue/node_modules/@flue/runtime` package is
+     the compatibility oracle. Upstream `main`, its changelog, and discussions
+     inform forward design but are not a release claim. If a local checkout is
+     inspected, treat it as read-only and never run its deploy.
 4. **Known open items the tests will force** (expected implementation work):
    - `emitCloudflare(root, children, analysis, { runtimeImport, emitRuntimeTo })` — 4th options arg; rewrite runtime imports; copy a **react-free** runtime file set (evaluate/collect/prompt/store) to `emitRuntimeTo`. This requires splitting `src/reconciler.ts` (react-reconciler dep) so `collectInfra`/`collectPrompt` live in a react-free module, and splitting `src/state.ts` so `createStore`/`withStaticEval` don't import react. Keep root `bun test tests` (parity) green through the split.
    - `emitFlue(opts & { runtimeImport, emitRuntimeTo })`, `emitFlueChild(child, budget, opts)`.

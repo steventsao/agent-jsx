@@ -2,9 +2,17 @@
 
 *Workers since renamed agent-fiber-\* → agent-jsx-\*; transcripts below are verbatim from the original runs.*
 
-All three layers green as of 2026-07-07 (agents@0.8.5 in real workerd via vitest-pool-workers; `@flue/runtime` from the local checkout). **v0.5 (the reactive flue workflow executor) is now green too** — see the v0.5 section (#12–#17). **v0.6 (method props: request/response RPC with return values) is green too** — see #21–#23. Work split: codex delivered Layer 1 (react-free runtime split, emitter options, several template fixes below) before its run was stopped; layers 2–3 and v0.5 were finished by hand. Every item below is a place where reality disagreed with the first-draft emitters or tests.
+Current baselines are green as of 2026-07-17: Cloudflare reconcile on
+`agents@0.17.4`, Cloudflare Think on `agents@0.17.4` plus
+`@cloudflare/think@0.13.0`, and Flue on the current published
+`@flue/runtime@1.0.0-beta.9`. The numbered findings retain the earlier
+investigation history; item #39 records the current-version revalidation.
+**v0.5 (the reactive flue workflow executor) is green** — see #12–#17.
+**v0.6 (method props: request/response RPC with return values) is green** — see
+#21–#23. Every item below is a place where runtime reality constrained an
+emitter or test assumption.
 
-## cloudflare/agents (v0.8.5)
+## cloudflare/agents (original v0.8.5 baseline, revalidated on v0.17.4)
 
 1. **`this.name` throws under direct DO access.** partyserver's `name` getter throws unless the name was set via `getAgentByName`/`setName`/routing (`partyserver/src/index.ts:601`, workerd issue #2240) — and the agents pkg reads `this.name` internally in `_emit` on **every `setState`** (`agents/src/index.ts:853`, `:1402`). Consequences encoded:
    - Generated callback refs route by **`ctx.id` string** (reconstructable via `idFromString`), never `this.name`.
@@ -40,7 +48,7 @@ shook out these divergences from the first-draft assumptions.
 ## Verification commands
 
 ```sh
-bun run ci                                     # 125 root tests + typecheck + packed-package validation
+bun run ci                                     # 136 root tests + typecheck + packed-package validation
 cd compat/cloudflare && bun run typecheck && bun run test  # 7 tests, real workerd
 cd compat/flue && bun run test                 # 12 Vitest tests + 3 plain-Bun PDF checks, real @flue/runtime
 bun run all                                    # examples still green
@@ -108,3 +116,7 @@ two facts.
 38. **The emit lands `__outputs` synchronously, but the continuation fan-out is a SEPARATE, non-awaited reconcile — drive it explicitly to converge.** The `__emit` handler's `#applyOutput` writes `this.state.__outputs` and REQUESTS (never awaits, #35) the reconcile that expands the continuation; `setState` also fires `onStateChanged`, whose reconcile grabs the single-flight lock first, so the `if (needsReconcile) await #requestReconcile()` in the callback branch marks-and-returns without awaiting that in-flight pass. So when the emit RPC resolves, `__outputs` is durable but the grandchildren may not be spawned yet (the fan-out floats to completion). Exactly like uptime.spec drives an explicit `reconcile()` because vitest-pool-workers does not auto-fire alarms, `continuation.spec.ts` drives ONE drained `parent.reconcile()` after the emit to converge the fan-out deterministically before asserting (deployed, the emitter's post-emit wake tick drives it). Both the child's OWN state (`folder.state.folded`) and the fold-back into parent state (`parent.state.folded`) are then visible — the whole round-trip across three real DOs.
 
 **Live/compat proof (2026-07-08):** `compat/cloudflare` `bun run test` 7/7 in real workerd (vitest-pool-workers) — the 6 base/method-props specs plus `continuation.spec.ts`: applyState(seed) spawns the emitter → the emitter's `<task>` `emit`s in its own DO → reserved `__emit` RPC lands `["a","b"]` in the parent's durable `__outputs` → the parent re-render fans out `fold:a`/`fold:b` grandchildren → each folds its own uppercased result (visible in its own DO) back into `parent.state.folded === {a:"A", b:"B"}`.
+
+## current upstream revalidation (2026-07-17)
+
+39. **The current releases preserve the authored contract, with two Cloudflare adapter updates.** Revalidation pins every Cloudflare fixture to `agents@0.17.4`, and the Think/chess fixtures to `@cloudflare/think@0.13.0`; the reconcile, Think, chess, document-review, and both PDF suites all pass against those exact packages. The schedule API is now async, so emitted reconciliation inventories schedules with `await this.listSchedules()` rather than deprecated synchronous `getSchedules()`. Also, a root `/agents/{namespace}/{name}` request must establish partyserver's named-instance context: the generated client API now resolves the binding with `getAgentByName(...)` before calling the stub's `fetch`, while retaining `routeAgentRequest` for child and non-root routes. Without that bootstrap, document review returned 500 on workerd compatibility dates whose Durable Object IDs do not expose `.name`. Flue remains green on its current published `@flue/runtime@1.0.0-beta.9` (12 Vitest assertions plus 3 PDF checks); the proposed beta.10 delivered-message transport changes are tracked as an adapter seam, not treated as a released compatibility guarantee. The upstream roadmap audit and the portable design rules it produced are recorded in [`docs/upstream-alignment.md`](docs/upstream-alignment.md).

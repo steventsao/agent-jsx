@@ -79,7 +79,7 @@ approve(input: Approval): Result {
   this.setState(state =&gt; applyApproval(state, input));
   return { accepted: true };
 }</code></pre>
-        <p>Marks a method as part of the agent’s explicit public capability surface. Code generation creates the target-specific proxy; undecorated methods remain internal.</p>
+        <p>Marks a method as part of agent-jsx’s portable public-operation surface. Code generation creates the target-specific proxy and explicit inter-agent grant. On Cloudflare, the generated class also uses the client-facing <code>@callable()</code> decorator; internal Agent-to-Agent calls remain native Durable Object RPC.</p>
       </section>
 
       <section id="prompt" class="api-section">

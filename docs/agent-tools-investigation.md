@@ -1,5 +1,9 @@
 # Investigation: `agents@0.17` `agentTool` + `@cloudflare/think` vs our `agents@0.8.7` runtime
 
+> Follow-up (2026-07-17): both Cloudflare compatibility modes now run on
+> `agents@0.17.4`; Think runs on `@cloudflare/think@0.13.0`. The comparison
+> below is retained as the migration record, not the current version split.
+
 **Question.** agent-jsx generates Durable Object classes extending a hand-rolled
 `FiberAgentBase extends Agent<Env,State>` on `agents@0.8.7`, addressed by
 `getAgentByName` and driven by a deterministic reconcile (evaluate → diff →

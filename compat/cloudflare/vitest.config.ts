@@ -1,5 +1,5 @@
-// Mirrors the cloudflare-agents-playground test config (the known-good
-// vitest-pool-workers setup for agents 0.8.5): the `agents/vite` plugin plus
+// Mirrors the cloudflare/agents test config (the known-good
+// vitest-pool-workers setup for agents 0.17.4): the `agents/vite` plugin plus
 // the `cloudflareTest` plugin pointed at wrangler.jsonc. Runs the generated
 // classes inside real workerd — no dev server, no mocks.
 import path from "node:path";
