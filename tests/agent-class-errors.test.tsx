@@ -2,13 +2,16 @@
  * Class-authoring error paths and the pieces of src/agent-class.tsx +
  * src/callable.ts the happy-path suite never exercises:
  *
- *   - compileAgentClass requires a static agentName and a model, loudly;
+ *   - compileAgentClass requires a static agentName; definition evaluation
+ *     requires a non-empty model, loudly;
  *   - invokeCallable refuses methods not decorated with @callable();
  *   - composeAgent requires a function child;
  *   - before __bind, state/setState work against DETACHED state (initialState
  *     fallback, then an accumulated private copy); binding a store shadows it;
- *   - normalizeTools: the `run` alias, entries without execute/run dropped,
- *     non-object values dropped, JSX passed through untouched;
+ *   - rendered AI SDK tool objects retain their metadata, invalid scalar tools
+ *     fail loudly, and declarative tool JSX passes through untouched;
+ *   - deleted class members fail at the migration seam instead of leaking as
+ *     undefined render-prop bindings;
  *   - callableNames walks the full prototype chain up to Agent;
  *   - callable() itself only decorates methods, in both decorator protocols.
  */
@@ -23,6 +26,7 @@ import {
 import { evaluateComponent } from "../src/compile/evaluate.ts";
 import { collectInfra } from "../src/tree.ts";
 import { createStore } from "../src/store.ts";
+import { z } from "zod";
 
 interface CounterState extends Record<string, unknown> {
   count: number;
@@ -30,8 +34,11 @@ interface CounterState extends Record<string, unknown> {
 
 class CounterAgent extends Agent<CounterState, { step: number }> {
   static agentName = "counter";
-  model = "test/counter-model";
   initialState: CounterState = { count: 0 };
+
+  render() {
+    return this.define({ model: "test/counter-model" });
+  }
 
   helper(x: number) {
     return x * 2;
@@ -52,24 +59,137 @@ const Counter = compileAgentClass(CounterAgent);
 describe("compileAgentClass — authoring requirements", () => {
   it("throws without a static agentName", () => {
     class AnonymousAgent extends Agent<CounterState> {
-      model = "test/model";
       initialState: CounterState = { count: 0 };
+      render() {
+        return this.define({ model: "test/model" });
+      }
     }
     expect(() => compileAgentClass(AnonymousAgent as never)).toThrow(
       "[agent-jsx] Agent class needs static agentName"
     );
   });
 
-  it("throws without a model", () => {
+  it("throws when render declares an empty model", () => {
     class ModellessAgent extends Agent<CounterState> {
       static agentName = "modelless";
-      // Satisfies the abstract member at compile time while staying undefined
-      // at runtime — the compileAgentClass check is what fires.
-      declare model: string;
       initialState: CounterState = { count: 0 };
+      render() {
+        return this.define({ model: "" });
+      }
     }
-    expect(() => compileAgentClass(ModellessAgent as never)).toThrow(
-      '[agent-jsx] Agent class "modelless" needs model'
+    const Modelless = compileAgentClass(ModellessAgent);
+    expect(() =>
+      Modelless.spec.resolveDefinition!({}, createStore({ count: 0 }))
+    ).toThrow(
+      '[agent-jsx] agent "modelless": definition.model must contain a non-empty model id'
+    );
+  });
+
+  it("accepts equivalent inline Zod contracts while rejecting a changed contract", () => {
+    class InlineSchemaAgent extends Agent<
+      { numeric: boolean },
+      { query: unknown }
+    > {
+      static agentName = "inline-schema";
+      initialState = { numeric: false };
+
+      render() {
+        return this.define({
+          model: "test/model",
+          inputSchema: z.object({
+            query: this.state.numeric ? z.number() : z.string(),
+          }),
+        });
+      }
+    }
+
+    const InlineSchema = compileAgentClass(InlineSchemaAgent);
+    expect(() =>
+      InlineSchema.spec.resolveDefinition!(
+        { query: "first" },
+        createStore<{ numeric: boolean }>({ numeric: false }),
+      )
+    ).not.toThrow();
+    // render() constructs a fresh Zod object on every declaration evaluation.
+    expect(() =>
+      InlineSchema.spec.resolveDefinition!(
+        { query: "second" },
+        createStore<{ numeric: boolean }>({ numeric: false }),
+      )
+    ).not.toThrow();
+    expect(() =>
+      InlineSchema.spec.resolveDefinition!(
+        { query: 3 },
+        createStore<{ numeric: boolean }>({ numeric: true }),
+      )
+    ).toThrow(
+      '[agent-jsx] agent "inline-schema": static definition field "inputSchema" changed between renders',
+    );
+  });
+
+  it("uses SkillSource id and fingerprint for equivalent inline declarations", () => {
+    class InlineSkillAgent extends Agent<{ revision: number }> {
+      static agentName = "inline-skill";
+      initialState = { revision: 1 };
+
+      render() {
+        const revision = this.state.revision;
+        return this.define({
+          model: "test/model",
+          skills: [{
+            id: "review",
+            fingerprint: `review-v${revision}`,
+            async list() { return []; },
+            async load() { return null; },
+          }],
+        });
+      }
+    }
+
+    const InlineSkill = compileAgentClass(InlineSkillAgent);
+    expect(() => InlineSkill.spec.resolveDefinition!(
+      {},
+      createStore({ revision: 1 }),
+    )).not.toThrow();
+    expect(() => InlineSkill.spec.resolveDefinition!(
+      {},
+      createStore({ revision: 1 }),
+    )).not.toThrow();
+    expect(() => InlineSkill.spec.resolveDefinition!(
+      {},
+      createStore({ revision: 2 }),
+    )).toThrow(
+      '[agent-jsx] agent "inline-skill": static definition field "skills" changed between renders',
+    );
+  });
+
+  it("rejects deleted class definition members with one migration diagnostic", () => {
+    class PartiallyMigratedAgent extends Agent<Record<string, never>> {
+      static agentName = "partial-migration";
+      initialState = {};
+      model = "legacy/model";
+      description = "legacy description";
+      displayName = "Legacy display name";
+
+      getPrompt() {
+        return "legacy prompt";
+      }
+
+      getTools() {
+        return {};
+      }
+
+      getSkills() {
+        return [];
+      }
+
+      render() {
+        return this.define({ model: "test/model" });
+      }
+    }
+
+    expect(() => compileAgentClass(PartiallyMigratedAgent)).toThrow(
+      '[agent-jsx] Agent class "partial-migration" still declares removed members: model, description, displayName, getPrompt, getTools, getSkills. Move model, metadata, prompt, tools, skills, and MCP servers into render() { return this.define({...}) }.',
     );
   });
 });
@@ -128,54 +248,64 @@ describe("Agent — detached state before binding", () => {
   });
 });
 
-describe("normalizeTools — object map edge cases", () => {
+describe("rendered tools — object map edge cases", () => {
   class ToolboxAgent extends Agent<Record<string, never>> {
     static agentName = "toolbox";
-    model = "test/toolbox-model";
     initialState = {};
 
-    getTools() {
-      return {
-        runner: { description: "run alias", run: () => "ran" },
-        executor: { description: "execute alias", execute: () => "executed" },
-        bare: { execute: () => "no description" },
-        noCallable: { description: "missing execute/run" },
-        scalar: 42,
-        absent: null,
-        text: "not a tool",
-      };
+    render() {
+      return this.define({
+        model: "test/toolbox-model",
+        tools: {
+          runner: { description: "run alias", run: () => "ran" },
+          executor: { description: "execute alias", execute: () => "executed" },
+          bare: { execute: () => "no description" },
+          noCallable: { description: "missing execute/run" },
+        },
+      });
     }
   }
 
-  it("keeps execute/run entries (run as alias, empty-string default description); drops the rest", () => {
+  it("preserves object tool definitions without flattening their metadata", () => {
     const Toolbox = compileAgentClass(ToolboxAgent);
-    const roots = evaluateComponent(Toolbox.spec.impl, {
-      store: createStore<Record<string, never>>({}),
-      emit: () => {},
-    });
-    const tools = roots.flatMap((root) => collectInfra(root));
-
-    expect(tools.map((t) => `${t.kind}:${t.name}`).sort()).toEqual([
-      "tool:bare",
-      "tool:executor",
-      "tool:runner",
+    const definition = Toolbox.spec.resolveDefinition!({}, createStore({}));
+    expect(Object.keys(definition.tools)).toEqual([
+      "runner",
+      "executor",
+      "bare",
+      "noCallable",
     ]);
+    expect((definition.tools.runner as { run(): string }).run()).toBe("ran");
+    expect((definition.tools.executor as { execute(): string }).execute()).toBe("executed");
+  });
 
-    const byName = Object.fromEntries(tools.map((t) => [t.name, t]));
-    expect(byName.runner?.handlers.run?.({})).toBe("ran");
-    expect(byName.executor?.handlers.run?.({})).toBe("executed");
-    expect(byName.runner?.config.description).toBe("run alias");
-    expect(byName.bare?.config.description).toBe("");
+  it("rejects scalar tool entries instead of silently dropping them", () => {
+    class InvalidToolboxAgent extends Agent<Record<string, never>> {
+      static agentName = "invalid-toolbox";
+      initialState = {};
+      render() {
+        return this.define({
+          model: "test/model",
+          tools: { scalar: 42 as never },
+        });
+      }
+    }
+    const InvalidToolbox = compileAgentClass(InvalidToolboxAgent);
+    expect(() => InvalidToolbox.spec.resolveDefinition!({}, createStore({}))).toThrow(
+      '[agent-jsx] agent "invalid-toolbox": definition.tools.scalar must be an AI SDK tool definition',
+    );
   });
 
   it("passes declarative <tool> JSX through untouched", () => {
     class JsxToolsAgent extends Agent<Record<string, never>> {
       static agentName = "jsx-tools";
-      model = "test/jsx-tools-model";
       initialState = {};
 
-      getTools() {
-        return <tool name="direct" description="declared" run={() => "ok"} />;
+      render() {
+        return this.define({
+          model: "test/jsx-tools-model",
+          tools: <tool name="direct" description="declared" run={() => "ok"} />,
+        });
       }
     }
     const JsxTools = compileAgentClass(JsxToolsAgent);
@@ -194,8 +324,11 @@ describe("callableNames — prototype chain", () => {
   it("collects @callable methods up the chain to Agent, excluding plain methods", () => {
     class BaseAgent extends Agent<Record<string, never>> {
       static agentName = "chain";
-      model = "test/chain-model";
       initialState = {};
+
+      render() {
+        return this.define({ model: "test/chain-model" });
+      }
 
       @callable()
       baseMethod() {

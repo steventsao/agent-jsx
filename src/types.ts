@@ -64,6 +64,77 @@ export interface PromptBlock {
   text: string;
 }
 
+/** AI SDK-compatible tool map retained by reference until the target runtime. */
+export type AgentToolSet = Readonly<Record<string, unknown>>;
+
+// ---------------------------------------------------------------------------
+// Agent Skills
+
+/** Structural Cloudflare Agent Skills metadata; no runtime package dependency. */
+export interface AgentSkillDescriptor {
+  name: string;
+  description: string;
+  compatibility?: string;
+  license?: string;
+  allowedTools?: string;
+  metadata?: Record<string, unknown>;
+  sourceId?: string;
+  version?: string;
+}
+
+export interface AgentSkillResource {
+  path: string;
+  kind: "reference" | "script" | "asset" | "file";
+  content: string;
+  size?: number;
+  encoding?: "text" | "base64";
+  mimeType?: string;
+  precompiled?: boolean;
+}
+
+export interface AgentSkillContent extends AgentSkillDescriptor {
+  body: string;
+  rawContent?: string;
+  resources?: Omit<AgentSkillResource, "content">[];
+}
+
+/**
+ * Target-neutral structural twin of `SkillSource` from `agents/skills`.
+ * Cloudflare SkillSource implementations satisfy it directly, without making
+ * `agents` a dependency of the authoring package. The current Bun-driven
+ * compiler can load importable sources (including `skills.fromManifest(...)`),
+ * but not Vite-only `agents:skills` modules or env-bound `skills.r2(...)`.
+ */
+export interface AgentSkillSource {
+  id: string;
+  fingerprint: string;
+  list(): Promise<AgentSkillDescriptor[]>;
+  load(name: string): Promise<AgentSkillContent | null>;
+  readResource?(name: string, path: string): Promise<AgentSkillResource | null>;
+  refresh?(): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Model Context Protocol dependencies
+
+/** Portable remote transports supported by Cloudflare Agents. */
+export type McpTransport = "auto" | "streamable-http" | "sse";
+
+/**
+ * An inert MCP dependency declaration. The compiler validates and carries this
+ * descriptor but never connects to the server; target runtimes own the actual
+ * client lifecycle.
+ */
+export interface McpServerDefinition {
+  /** Public endpoint or deployment-safe default. Bearer credentials must stay
+   * behind a credential-terminating proxy; Agents persists transport options. */
+  url: string;
+  transport?: McpTransport;
+}
+
+/** Server identity comes from the record key, avoiding a duplicated `name`. */
+export type McpServerDefinitions = Readonly<Record<string, McpServerDefinition>>;
+
 // ---------------------------------------------------------------------------
 // Intrinsic element props (JSX augmentation lives in intrinsics.d.ts)
 
@@ -111,7 +182,10 @@ export interface TaskProps {
 export interface ToolProps {
   name: string;
   description: string;
-  run: (input: Record<string, unknown>) => string | Promise<string>;
+  /** Optional schema for declarative JSX tools. Use an AI SDK tool map when
+   * richer metadata (approval policy, provider options, etc.) must survive. */
+  inputSchema?: unknown;
+  run: (input: Record<string, unknown>) => unknown | Promise<unknown>;
 }
 
 export interface ScopeProps {

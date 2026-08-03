@@ -1,8 +1,9 @@
 /**
  * Compiler-owned lowering for one hierarchy-free, Cloudflare-style agent class.
- * The authored file owns state, model, prompts/tools/skills, and @callable
- * methods. This tiny generated companion turns it into a composable JSX
- * boundary; parent/child relationships remain exclusively in composition JSX.
+ * The authored file owns state, one rendered model/prompt/tools/skills/MCP
+ * definition, and @callable methods. This tiny generated companion turns it
+ * into a composable JSX boundary; parent/child relationships remain exclusively
+ * in composition JSX.
  */
 
 export interface AgentModuleEmitOptions {

@@ -22,12 +22,13 @@
       <p class="side-label">Authoring</p>
       <a href="#agent">Agent</a>
       <a href="#identity">Identity and model</a>
+      <a href="#render">render / define</a>
+      <a href="#prompt">Prompt</a>
+      <a href="#schemas">Input and output schemas</a>
+      <a href="#tools">Tools</a>
+      <a href="#skills">Skills and MCP</a>
       <a href="#state">State</a>
       <a href="#callable">callable</a>
-      <a href="#prompt">getPrompt</a>
-      <a href="#tools">getTools</a>
-      <a href="#skills">getSkills</a>
-      <a href="#render">render</a>
       <p class="side-label">Composition</p>
       <a href="#compile">compileAgentClass</a>
       <a href="#compose">composeAgent</a>
@@ -39,7 +40,7 @@
     <main class="docs">
       <p class="eyebrow">Reference</p>
       <h1>Agent API</h1>
-      <p class="lede small">The authored API is exported from <code>agent-jsx/agent</code>. Agent files never declare whether they are a parent or child; composition supplies that relationship.</p>
+      <p class="lede small">The authored API is exported from <code>@steventsao/agent-jsx/agent</code>. An agent renders its complete model-facing definition, but never declares whether it is a parent or child; composition supplies that relationship.</p>
 
       <section id="agent" class="api-section">
         <h2><code>Agent&lt;S, P&gt;</code></h2>
@@ -51,9 +52,8 @@
         <div class="field-table">
           <div class="field-row header"><span>Member</span><span>Meaning</span></div>
           <div class="field-row"><code>initialState</code><span>Required initial durable state.</span></div>
-          <div class="field-row"><code>model</code><span>Required explicit provider/model identifier.</span></div>
-          <div class="field-row"><code>description?</code><span>Human-readable purpose used by target registries.</span></div>
-          <div class="field-row"><code>displayName?</code><span>UI label for generated agent/tool surfaces.</span></div>
+          <div class="field-row"><code>render()</code><span>Required synchronous model-facing definition.</span></div>
+          <div class="field-row"><code>define(...)</code><span>Protected helper that brands and type-checks the render result.</span></div>
           <div class="field-row"><code>props</code><span>Current typed composition input.</span></div>
         </div>
       </section>
@@ -61,8 +61,36 @@
       <section id="identity" class="api-section">
         <h2>Identity and model</h2>
         <pre><code>static agentName = "policy-reviewer";
-model = "openrouter/anthropic/claude-sonnet-4";</code></pre>
-        <p>Both values are authored policy. The compiler does not infer provider, model, role, or hierarchy from class names, filenames, or export names.</p>
+render() {
+  return this.define({
+    model: "openrouter/anthropic/claude-sonnet-4",
+  });
+}</code></pre>
+        <p><code>agentName</code> is durable class identity; <code>model</code> is a required field in the rendered definition. Both are authored policy. The compiler does not infer provider, role, model, or hierarchy from class names, filenames, or export names.</p>
+      </section>
+
+      <section id="render" class="api-section">
+        <h2><code>render()</code> and <code>this.define(...)</code></h2>
+        <pre><code>render() {
+  return this.define({
+    model: "openrouter/anthropic/claude-sonnet-4",
+    description: "Reviews one supplied policy.",
+    displayName: "Policy reviewer",
+    inputSchema: policyInputSchema,
+    outputSchema: policyOutputSchema,
+    prompt: "Review the policy for concrete risks.",
+    tools: { lookup },
+    skills: [releaseNotesSkill],
+    mcpServers: {
+      policies: {
+        url: "https://mcp.example.com/policies",
+        transport: "streamable-http",
+      },
+    },
+  });
+}</code></pre>
+        <p>The required render result is one declarative agent definition. It may derive prompt or tools from current <code>props</code> and <code>state</code>, while model, description, display name, input/output schemas, skills, and MCP dependencies remain stable across renders. The model-driven Cloudflare target is currently the only target that lowers every field.</p>
+        <div class="note"><strong>Not UI:</strong> <code>render()</code> declares what the model can see and use. Returning an element or a Promise is an error. Application UI belongs outside the authored <code>Agent</code> class.</div>
       </section>
 
       <section id="state" class="api-section">
@@ -83,45 +111,65 @@ approve(input: Approval): Result {
       </section>
 
       <section id="prompt" class="api-section">
-        <h2><code>getPrompt()</code></h2>
-        <pre><code>getPrompt() {
-  return (
-    &lt;prompt&gt;
-      &lt;sys p={10}&gt;Review the supplied policy.&lt;/sys&gt;
-      &lt;msg p={8}&gt;{this.props.policy}&lt;/msg&gt;
-    &lt;/prompt&gt;
-  );
+        <h2><code>prompt</code></h2>
+        <pre><code>render() {
+  return this.define({
+    model: "openrouter/anthropic/claude-sonnet-4",
+    prompt: (
+      &lt;prompt&gt;
+        &lt;sys p={10}&gt;Review the supplied policy.&lt;/sys&gt;
+        &lt;msg p={8}&gt;{this.props.policy}&lt;/msg&gt;
+      &lt;/prompt&gt;
+    ),
+  });
 }</code></pre>
-        <p>Returns plain text or prompt JSX. Prompt blocks are rendered under a priority budget. Cloudflare Think maps this to <code>getSystemPrompt()</code>; Flue maps it to instructions.</p>
+        <p>Accepts plain text or prompt JSX. Prompt blocks are rendered under a priority budget. A model-driven class without skills exposes the result through <code>getSystemPrompt()</code>; a skill-bearing class composes the live authored prompt with Think’s Session skill catalog in <code>beforeTurn()</code>.</p>
+      </section>
+
+      <section id="schemas" class="api-section">
+        <h2><code>inputSchema</code> and <code>outputSchema</code></h2>
+        <pre><code>render() {
+  return this.define({
+    model: "openrouter/anthropic/claude-sonnet-4",
+    inputSchema: policyInputSchema,
+    outputSchema: policyOutputSchema,
+  });
+}</code></pre>
+        <p>These static contracts define a class-authored child’s native <code>agentTool</code> boundary. Standard Schema values such as Zod pass through to AI SDK v6; a target-neutral throwing <code>parse(value)</code> validator is adapted without losing validation. After Cloudflare validates object input, the generated child binds it as the current <code>this.props</code> before re-rendering its prompt and tools. Child text is decoded first, then the parent tool applies the output schema exactly once so transforms are not duplicated.</p>
       </section>
 
       <section id="tools" class="api-section">
-        <h2><code>getTools()</code></h2>
-        <pre><code>getTools() {
-  return {
-    lookup: {
-      description: "Read one policy by id.",
-      execute: ({ id }) =&gt; readPolicy(id),
+        <h2><code>tools</code></h2>
+        <pre><code>render() {
+  return this.define({
+    model: "openrouter/anthropic/claude-sonnet-4",
+    tools: {
+      lookup: {
+        description: "Read one policy by id.",
+        execute: ({ id }: { id: string }) =&gt; readPolicy(id),
+      },
     },
-  };
+  });
 }</code></pre>
-        <p>Returns an AI SDK-style tool object or declarative <code>&lt;tool&gt;</code> JSX. The compiler lowers the definition into the selected target’s native tool representation.</p>
+        <p>Accepts an AI SDK-style tool map or declarative <code>&lt;tool&gt;</code> JSX. The model-driven Cloudflare target re-derives the map whenever Think asks for tools while preserving each AI SDK tool object, its schemas, execution function, approval policy, provider metadata, and structured-result contract. Declarative tools are merged with generated child <code>agentTool</code> entries.</p>
       </section>
 
       <section id="skills" class="api-section">
-        <h2><code>getSkills()</code></h2>
-        <pre><code>getSkills() {
-  return [releaseNotesSkill, incidentResponseSkill];
-}</code></pre>
-        <p>Returns opaque skill sources owned by the agent. Targets that support skills retain the references without turning them into hierarchy.</p>
-      </section>
-
-      <section id="render" class="api-section">
-        <h2><code>render()</code></h2>
+        <h2><code>skills</code> and <code>mcpServers</code></h2>
         <pre><code>render() {
-  return &lt;AgentStatus state={this.state} /&gt;;
+  return this.define({
+    model: "openrouter/anthropic/claude-sonnet-4",
+    skills: [releaseNotesSkill, incidentResponseSkill],
+    mcpServers: {
+      policies: {
+        url: "https://mcp.example.com/policies",
+        transport: "streamable-http",
+      },
+    },
+  });
 }</code></pre>
-        <p>Optional UI projection only. The compiler never treats <code>render()</code> as prompt, tools, control flow, or agent hierarchy.</p>
+        <p><code>skills</code> implement Cloudflare’s structural <code>SkillSource</code> contract. The Bun-driven emitter supports custom/importable sources and <code>skills.fromManifest(...)</code>; it cannot currently load the Vite-only <code>agents:skills</code> module or env-bound <code>skills.r2(...)</code> sources. <code>mcpServers</code> is keyed by stable server name; each authored descriptor accepts an HTTP URL and optional <code>auto</code>, <code>streamable-http</code>, or <code>sse</code> transport.</p>
+        <div class="note"><strong>No compile-time I/O or persisted secrets:</strong> the compiler validates MCP descriptors but never connects to a server. A deployment-owned <code>mcpResolver(env, name, descriptor)</code> may select a public URL, transport, OAuth callback settings, and non-secret <code>configRevision</code>. It must never return auth headers because Cloudflare Agents <code>0.20.1</code> persists MCP transport options. Callback hosts must be HTTP(S) origins, callback paths must be plain absolute paths, and credential-like query keys are rejected. Terminate bearer credentials in a proxy or service; use <code>mcpConnectionTimeoutMs</code> for the aggregate readiness wait.</div>
       </section>
 
       <section id="compile" class="api-section">
@@ -135,7 +183,7 @@ approve(input: Approval): Result {
         <pre><code>composeAgent(
   &lt;Coordinator name="main"&gt;
     {({ task, accept }) =&gt; (
-      &lt;Worker task={task} onResult={result(accept)} /&gt;
+      &lt;Worker name="worker" task={task} onResult={result(accept)} /&gt;
     )}
   &lt;/Coordinator&gt;
 );</code></pre>
@@ -144,20 +192,24 @@ approve(input: Approval): Result {
 
       <section id="result" class="api-section">
         <h2><code>result(callable)</code></h2>
-        <pre><code>&lt;Worker onResult={result(accept)} /&gt;</code></pre>
-        <p>Explicitly grants a child the authority to return its delegated result to a parent callable. This is a visible capability binding, not a name-based convention.</p>
+        <pre><code>&lt;Worker name="worker" onResult={result(accept)} /&gt;</code></pre>
+        <p>Explicitly grants a child the authority to return its delegated result to a parent callable in targets that implement result routing. This is a visible capability binding, not a name-based convention. The model-driven Cloudflare target does not preserve parent callback, method, result, or render-prop continuation grants in a native child facet: <code>agentTool</code> returns child output to the parent model and the emitter reports each dropped capability kind.</p>
       </section>
 
       <section id="generated" class="api-section">
         <h2>Generated runtime</h2>
+        <pre><code>import {
+  emitCloudflare,
+  emitThink,
+} from "@steventsao/agent-jsx/compile/cloudflare";</code></pre>
         <p>Target plumbing is intentionally absent from the authored API:</p>
         <div class="field-table">
           <div class="field-row header"><span>Target</span><span>Compiler output</span></div>
-          <div class="field-row"><strong>Agents</strong><span>Durable classes, state bridges, callable RPC, child props, callbacks, bindings, and migrations.</span></div>
-          <div class="field-row"><strong>Think</strong><span><code>getModel</code>, optional deployment <code>modelResolver</code>, <code>getSystemPrompt</code>, native tools, durable programmatic turns, and text/reasoning traces.</span></div>
-          <div class="field-row"><strong>Flue</strong><span>Profiles, instructions, skills, tools, subagent lists, and workflow tasks.</span></div>
+          <div class="field-row"><strong>Cloudflare reconcile</strong><span>Durable classes, state bridges, callable RPC, child props, callbacks, bindings, migrations, and deterministic infrastructure convergence. Model execution, AI SDK tools, skills, and MCP clients remain inert.</span></div>
+          <div class="field-row"><strong>Cloudflare model-driven</strong><span><code>getModel</code>, optional deployment <code>modelResolver</code>, <code>getSystemPrompt</code> for definitions without skills or live <code>beforeTurn</code> composition for skill-bearing definitions, native tools and importable skills, runtime MCP clients, durable programmatic turns, and text/reasoning traces. Native child output returns to the parent model; parent-owned function and continuation bindings are diagnosed as unsupported.</span></div>
+          <div class="field-row"><strong>Legacy Flue</strong><span>The existing low-level profile, subagent, tool, and workflow adapter. The complete class-rendered definition is not a new Flue contract.</span></div>
         </div>
-        <div class="note"><strong>Provider boundary:</strong> Model ids stay explicit in agent classes. A Think target may import a deployment-owned <code>modelResolver(env, id)</code> for SDK packages and secrets; neither agent names nor hierarchy select a provider.</div>
+        <div class="note"><strong>Provider boundary:</strong> Model ids stay explicit in rendered agent definitions. A Think target may import a deployment-owned <code>modelResolver(env, id)</code> for SDK packages and secrets; neither agent names nor hierarchy select a provider.</div>
         <div class="note"><strong>Reasoning UI:</strong> Think’s model-supplied reasoning parts can be returned by the generated <code>runTurnWithTrace</code> bridge for progress indicators or thought bubbles. Authors do not implement stream callbacks manually.</div>
       </section>
     </main>
@@ -165,10 +217,13 @@ approve(input: Approval): Result {
     <aside class="toc" aria-label="On this page">
       <p class="side-label">On this page</p>
       <a href="#agent">Agent</a>
+      <a href="#render">Definition</a>
       <a href="#state">State</a>
       <a href="#callable">callable</a>
       <a href="#prompt">Prompt</a>
+      <a href="#schemas">Schemas</a>
       <a href="#tools">Tools</a>
+      <a href="#skills">Skills and MCP</a>
       <a href="#compose">Composition</a>
       <a href="#generated">Generated runtime</a>
     </aside>

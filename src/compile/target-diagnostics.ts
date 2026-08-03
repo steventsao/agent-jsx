@@ -3,6 +3,7 @@ import { collectInfra } from "../tree.ts";
 import { evaluateComponent } from "./evaluate.ts";
 import type { AnyAgentSpec } from "../agent-component.tsx";
 import type { ChildAgentSpec } from "./emit-cloudflare.ts";
+import type { InfraRecord } from "../types.ts";
 
 export type TargetDiagnosticSeverity = "warning" | "error";
 
@@ -90,11 +91,82 @@ const THINK_UNSUPPORTED: Record<string, string> = {
   task: "think-task-unsupported",
 };
 
+const THINK_BINDING_UNSUPPORTED = {
+  callback: "think-callback-binding-unsupported",
+  method: "think-method-binding-unsupported",
+  result: "think-result-binding-unsupported",
+  continuation: "think-continuation-binding-unsupported",
+} as const;
+
+function thinkDiagnosticsForRecords(
+  records: readonly InfraRecord[],
+): TargetDiagnostic[] {
+  const unsupportedByKind = new Map<string, string[]>();
+  const bindingsByKind = new Map<keyof typeof THINK_BINDING_UNSUPPORTED, string[]>();
+
+  for (const record of records) {
+    if (record.kind in THINK_UNSUPPORTED) {
+      const names = unsupportedByKind.get(record.kind) ?? [];
+      if (!names.includes(record.name)) names.push(record.name);
+      unsupportedByKind.set(record.kind, names);
+    }
+    if (record.kind !== "subagent") continue;
+    for (const [capability, binding] of Object.entries(record.bindings ?? {})) {
+      const kind = binding.kind;
+      const labels = bindingsByKind.get(kind) ?? [];
+      const label = `${record.name}.${capability}`;
+      if (!labels.includes(label)) labels.push(label);
+      bindingsByKind.set(kind, labels);
+    }
+  }
+
+  const diagnostics: TargetDiagnostic[] = [...unsupportedByKind.entries()].map(
+    ([kind, names]) => ({
+      target: "think" as const,
+      severity: "warning" as const,
+      code: THINK_UNSUPPORTED[kind]!,
+      message:
+        `<${kind}> records [${names.join(", ")}] have no think-mode mapping (a Think agent has no ` +
+        "reconcile loop); they are DROPPED. Use reconcile mode (emitCloudflare) for durable-infra convergence.",
+    }),
+  );
+
+  for (const [kind, labels] of bindingsByKind) {
+    const behavior = kind === "result"
+      ? "native agentTool returns child output to the parent model but does not invoke the bound parent callable"
+      : kind === "continuation"
+        ? "native agentTool returns child output to the parent model but does not persist __outputs or expand the parent-owned continuation"
+        : `native agentTool does not expose parent-owned ${kind} functions to the child`;
+    diagnostics.push({
+      target: "think",
+      severity: "warning",
+      code: THINK_BINDING_UNSUPPORTED[kind],
+      message:
+        `${kind}-bound capabilities [${labels.join(", ")}] have no Think mapping and are DROPPED; ` +
+        `${behavior}. Use emitCloudflare for callable routing or redesign the Think boundary around model-visible input/output.`,
+    });
+  }
+
+  return diagnostics;
+}
+
+/** Native Think agentTool returns a child result to the parent model. It does
+ * not invoke agent-jsx's parent-owned `result(callable)` continuation. Surface
+ * every such grant instead of silently pretending the target preserved it. */
+export function thinkResultBindingDiagnostics(
+  records: readonly InfraRecord[],
+): TargetDiagnostic[] {
+  return thinkDiagnosticsForRecords(records).filter(
+    (diagnostic) => diagnostic.code === "think-result-binding-unsupported",
+  );
+}
+
 export function thinkTargetDiagnostics(
   spec: AnyAgentSpec,
   sampleProps?: Record<string, unknown>,
+  analyzedRecords?: readonly InfraRecord[],
 ): TargetDiagnostic[] {
-  const byKind = new Map<string, string[]>();
+  if (analyzedRecords) return thinkDiagnosticsForRecords(analyzedRecords);
   try {
     // Sample-output expansion ON so a continuation-gated <task>/<tool> is seen too.
     const roots = withOutputs({ outputs: {}, setOutput: () => {}, expandSamples: true }, () =>
@@ -104,13 +176,9 @@ export function thinkTargetDiagnostics(
         emit: () => {},
       } as never)
     );
-    for (const root of roots)
-      for (const rec of collectInfra(root)) {
-        if (!(rec.kind in THINK_UNSUPPORTED)) continue;
-        const list = byKind.get(rec.kind) ?? [];
-        list.push(rec.name);
-        byKind.set(rec.kind, list);
-      }
+    return thinkDiagnosticsForRecords(
+      roots.flatMap((root) => collectInfra(root)),
+    );
   } catch {
     return [
       {
@@ -122,14 +190,6 @@ export function thinkTargetDiagnostics(
     ];
   }
 
-  return [...byKind.entries()].map(([kind, names]) => ({
-    target: "think" as const,
-    severity: "warning" as const,
-    code: THINK_UNSUPPORTED[kind]!,
-    message:
-      `<${kind}> records [${names.join(", ")}] have no think-mode mapping (a Think agent has no ` +
-      "reconcile loop); they are DROPPED. Use reconcile mode (emitCloudflare) for durable-infra convergence.",
-  }));
 }
 
 export function formatTargetDiagnosticsForComment(diagnostics: TargetDiagnostic[]): string {

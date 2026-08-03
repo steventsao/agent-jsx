@@ -19,9 +19,9 @@
 
   <main>
     <section class="hero">
-      <p class="eyebrow">One authored model · multiple durable targets</p>
+      <p class="eyebrow">One authored definition · explicit runtime contracts</p>
       <h1>Write agents normally.<br>Compose the hierarchy once.</h1>
-      <p class="lede">Agent files own state, prompts, tools, skills, and callable methods. JSX owns parent/child relationships and explicit authority. The compiler owns Durable Object classes, RPC bindings, migrations, Think turns, and Flue profiles.</p>
+      <p class="lede">Agent files render one model-facing definition for models, prompts, input/output schemas, tools, skills, and MCP servers while owning state and callable methods. Composition JSX owns parent/child relationships and explicit authority. The model-driven Cloudflare target lowers the complete definition; deterministic reconcile and legacy Flue adapters keep their narrower existing contracts.</p>
       <div class="actions">
         <a class="button primary" href="./api/">Read the API</a>
         <a class="button" href="https://github.com/steventsao/agent-jsx/tree/main/examples/chess">Chess example</a>
@@ -33,8 +33,14 @@
         <div class="code-label">agents/chess-match.agent.tsx</div>
         <pre><code>class ChessMatch extends Agent&lt;ChessState&gt; {
   static agentName = "chess-match";
-  model = "openrouter/openai/gpt-5-mini";
   initialState = initialChessState;
+
+  render() {
+    return this.define({
+      model: "openrouter/openai/gpt-5-mini",
+      description: "Run a validated chess match."
+    });
+  }
 
   get turn() {
     return turnFor(this.state);
@@ -66,6 +72,8 @@
       </article>
     </section>
 
+    <div class="note"><strong>Cloudflare model-driven boundary:</strong> Native <code>agentTool</code> returns child output to the parent model. It does not carry parent callbacks, methods, <code>result(...)</code> callables, or render-prop continuations into the child facet; the Think target emits a diagnostic for each dropped capability kind.</div>
+
     <section class="section">
       <div class="section-heading">
         <p class="eyebrow">Core primitives</p>
@@ -73,10 +81,12 @@
       </div>
       <div class="card-grid">
         <a class="card" href="./api/#agent"><code>Agent&lt;S, P&gt;</code><span>Stateful, hierarchy-free agent definition.</span></a>
+        <a class="card" href="./api/#render"><code>render() / define()</code><span>One required, model-facing definition; never UI.</span></a>
         <a class="card" href="./api/#state"><code>state / setState</code><span>Durable state with ordinary update semantics.</span></a>
         <a class="card" href="./api/#callable"><code>@callable()</code><span>Explicit public method surface.</span></a>
-        <a class="card" href="./api/#prompt"><code>getPrompt()</code><span>Plain text or priority-aware prompt JSX.</span></a>
-        <a class="card" href="./api/#tools"><code>getTools()</code><span>Plain AI SDK tools or declarative tool JSX.</span></a>
+        <a class="card" href="./api/#prompt"><code>prompt</code><span>Plain text or priority-aware prompt JSX.</span></a>
+        <a class="card" href="./api/#schemas"><code>inputSchema / outputSchema</code><span>Validated native child-tool input and structured output.</span></a>
+        <a class="card" href="./api/#tools"><code>tools / skills / MCP</code><span>Cloudflare model capabilities declared beside the model.</span></a>
         <a class="card" href="./api/#compose"><code>composeAgent()</code><span>Hierarchy and authority live at the call site.</span></a>
       </div>
     </section>
@@ -90,9 +100,9 @@
         <table>
           <thead><tr><th scope="col">Target</th><th scope="col">Generated mapping</th></tr></thead>
           <tbody>
-            <tr><th scope="row">Cloudflare Agents</th><td>Durable classes, callable proxies, props, callback RPC, and migrations.</td></tr>
-            <tr><th scope="row">Cloudflare Think</th><td>Models, system prompts, tools, durable turns, and reasoning traces for progress UI.</td></tr>
-            <tr><th scope="row">Flue</th><td>Agent profiles, instructions, tools, subagent rosters, and workflow delegation.</td></tr>
+            <tr><th scope="row">Cloudflare reconcile</th><td>Durable classes, callable proxies, props, callback RPC, migrations, and deterministic infrastructure convergence.</td></tr>
+            <tr><th scope="row">Cloudflare model-driven</th><td>The complete rendered definition: model, live prompt composition, schema boundaries, tools, skills, MCP clients, durable turns, and reasoning traces.</td></tr>
+            <tr><th scope="row">Legacy Flue</th><td>The existing low-level profile, roster, tool, and workflow adapter; no new full-definition support is implied.</td></tr>
           </tbody>
         </table>
       </div>

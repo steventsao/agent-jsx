@@ -1,6 +1,11 @@
 # Mapping the host to cloudflare/agents
 
-The prototype's `AgentHost` boundary is designed to be implemented by a Durable Object extending `Agent` from the `agents` package (checked against agents@0.8.5, `~/dev/cloudflare-agents-playground/packages/agents/src/index.ts`). The DO already owns everything the SimHost simulates — persisted schedules, persisted state, addressable children, a wake/hibernate lifecycle.
+The prototype's `AgentHost` boundary is implemented by a Durable Object extending `Agent` from the `agents` package. The current compatibility suite validates generated reconcile output against `agents@0.20.1` in real workerd. The DO already owns everything the SimHost simulates — persisted schedules, persisted state, addressable children, and a wake/hibernate lifecycle.
+
+This note describes the deterministic reconcile target and its low-level fiber
+tree. Its internal tree evaluation is distinct from the authored class
+`Agent.render()`, which declares a model-facing definition and is lowered in
+full only by the model-driven Cloudflare target.
 
 ## The shape
 
@@ -29,7 +34,7 @@ export class FiberAgent extends Agent<Env, State> {
 
 ## Primitive mapping
 
-| agent-jsx | cloudflare/agents (0.8.5) | Notes |
+| agent-jsx | cloudflare/agents (0.20.1) | Notes |
 |---|---|---|
 | `<schedule name every>` | `this.schedule(when, callback, payload, { idempotent })` / `getSchedules()` / `cancelSchedule(id)` | The pkg already ships the exact problem this solves: cron schedules are "idempotent by default", delayed ones need `{ idempotent: true }`, and `schedule()` inside `onStart()` logs a warning about "accumulating duplicate rows across Durable Object restarts". A reconciler replaces that per-call vigilance with a structural diff: desired schedules vs `getSchedules()`, create/cancel the difference. |
 | `<sensor name url interval>` | a poll `schedule` whose callback fetches + compares, or an inbound route (`onRequest`, email, webhook) | loopy's `@sensor(poll="5m")` is exactly a poll schedule; its webhook sensors are exactly `onRequest`. |
@@ -44,5 +49,5 @@ export class FiberAgent extends Agent<Env, State> {
 1. **Async reconciliation.** `reconcile()` is sync in the prototype; on CF every op is async (`getSchedules`, `schedule`, RPC). The commit sweep must enqueue ops and a convergence loop must apply them — a Kubernetes-controller shape (observe → diff → apply, retry until settled). React's commit stays sync; the host becomes eventually consistent. Races (sensor fires mid-apply) need the queue to be serialized per agent — the DO's single-threaded execution model actually helps here.
 2. **Unmount ≠ hibernate.** Eviction must NOT tear down infra (no unmount on hibernation); only an explicit `unmount()` reconciles to ∅. The prototype encodes this: process 1 in `rehydrate.tsx` never unmounts.
 3. **Bundle weight.** react + react-reconciler in a Worker is roughly 150–200KB minified — fine for paid Workers limits, worth measuring before believing.
-4. **Render discipline.** Render must stay pure and sync (no Suspense, no async components). All world-reaction goes through state; all mutation goes through the commit sweep. This is a constraint the linter can't enforce yet.
+4. **Reconcile-tree discipline.** Internal tree evaluation must stay pure and sync (no Suspense, no async components). All world-reaction goes through state; all mutation goes through the commit sweep. This is separate from the authored class-definition `render()` contract.
 5. **Schedule identity.** The pkg dedupes cron by (callback, expression, payload); the reconciler wants dedup by `name`. Carry `name` in the payload, or keep a name→id map in DO storage.

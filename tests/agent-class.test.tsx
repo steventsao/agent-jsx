@@ -8,9 +8,9 @@ import {
 } from "../src/agent-class.tsx";
 import { evaluateComponent } from "../src/compile/evaluate.ts";
 import { emitCloudflare } from "../src/compile/emit-cloudflare.ts";
-import { emitFlueChild } from "../src/compile/emit-flue.ts";
 import { analyzeAgent } from "../src/compile/graph.ts";
 import { collectInfra, collectPrompt } from "../src/tree.ts";
+import type { AgentSkillSource } from "../src/types.ts";
 import { createStore } from "../src/store.ts";
 
 interface MatchState extends Record<string, unknown> {
@@ -19,8 +19,6 @@ interface MatchState extends Record<string, unknown> {
 
 class MatchAgent extends Agent<MatchState> {
   static agentName = "class-match";
-  model = "test/match-model";
-  description = "Owns the match state.";
   initialState: MatchState = { turn: 0 };
 
   get currentTurn() {
@@ -32,12 +30,12 @@ class MatchAgent extends Agent<MatchState> {
     this.setState({ ...this.state, turn: value });
   }
 
-  getPrompt() {
-    return <prompt><sys p={10}>Match turn {this.state.turn}</sys></prompt>;
-  }
-
   render() {
-    return <div data-ui-only>UI turn {this.state.turn}</div>;
+    return this.define({
+      model: "test/match-model",
+      description: "Owns the match state.",
+      prompt: <prompt><sys p={10}>Match turn {this.state.turn}</sys></prompt>,
+    });
   }
 }
 
@@ -50,14 +48,23 @@ interface PlayerState extends Record<string, unknown> {
   calls: number;
 }
 
+const reviewSkill = {
+  id: "review",
+  fingerprint: "review-v1",
+  async list() { return []; },
+  async load() { return null; },
+} satisfies AgentSkillSource;
+
 class PlayerAgent extends Agent<PlayerState, PlayerProps> {
   static agentName = "class-player";
-  model = "test/player-model";
-  description = "Plays one turn.";
   initialState: PlayerState = { calls: 0 };
 
-  getPrompt() {
-    return <prompt><msg p={9}>Play turn {this.props.turn}</msg></prompt>;
+  render() {
+    return this.define({
+      model: "test/player-model",
+      description: "Plays one turn.",
+      prompt: <prompt><msg p={9}>Play turn {this.props.turn}</msg></prompt>,
+    });
   }
 }
 
@@ -66,24 +73,20 @@ const Player = compileAgentClass(PlayerAgent);
 
 class UtilityAgent extends Agent<{ calls: number }> {
   static agentName = "class-utility";
-  model = "test/utility-model";
   initialState = { calls: 0 };
 
-  getPrompt() {
-    return "Use the utility tools.";
-  }
-
-  getTools() {
-    return {
-      ping: {
-        description: "Return pong.",
-        execute: () => "pong",
+  render() {
+    return this.define({
+      model: "test/utility-model",
+      prompt: "Use the utility tools.",
+      tools: {
+        ping: {
+          description: "Return pong.",
+          execute: () => "pong",
+        },
       },
-    };
-  }
-
-  getSkills() {
-    return ["review"];
+      skills: [reviewSkill],
+    });
   }
 }
 
@@ -118,36 +121,26 @@ describe("class-authored agents", () => {
     expect(store.get().turn).toBe(3);
   });
 
-  it("uses getPrompt for agent context and never evaluates UI render", () => {
+  it("uses render for agent context", () => {
     const roots = evaluateComponent(ChessComposition.spec.impl, {
       store: createStore<MatchState>({ turn: 2 }),
       emit: () => {},
     });
 
     expect(collectPrompt(roots).map((block) => block.text)).toEqual(["Match turn 2"]);
-    expect(JSON.stringify(roots)).not.toContain("data-ui-only");
-    expect(JSON.stringify(roots)).not.toContain("UI turn");
   });
 
-  it("normalizes plain prompt and tool APIs into declarative context", () => {
+  it("keeps plain prompts and AI SDK tool maps in the rendered definition", () => {
+    const store = createStore({ calls: 0 });
     const roots = evaluateComponent(Utility.spec.impl, {
-      store: createStore({ calls: 0 }),
+      store,
       emit: () => {},
     });
+    const definition = Utility.spec.resolveDefinition!({}, store);
 
     expect(collectPrompt(roots).map((block) => block.text)).toEqual(["Use the utility tools."]);
-    expect(Utility.spec.skills).toEqual(["review"]);
-    expect(roots.flatMap((root) => collectInfra(root))).toMatchObject([
-      { kind: "tool", name: "ping", config: { description: "Return pong." } },
-    ]);
-
-    const flue = emitFlueChild({
-      spec: Utility.spec,
-      exportName: "Utility",
-      importPath: "./utility.tsx",
-    });
-    expect(flue).toContain('import { Utility } from "./utility.tsx";');
-    expect(flue).toContain("skills: Utility.spec.skills as never");
+    expect(Utility.spec.skills).toEqual([reviewSkill]);
+    expect(Object.keys(definition.tools)).toEqual(["ping"]);
   });
 
   it("emits authored callable methods on the generated Cloudflare class", () => {

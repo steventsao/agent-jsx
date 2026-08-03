@@ -10,10 +10,15 @@ import {
 /** Owns game state and public operations, but assumes no parent or children. */
 export default class ChessMatchAgent extends Agent<ChessState> {
   static agentName = "chess-match";
-  model = "openrouter/openai/gpt-5-mini";
-  displayName = "Agent JSX Chess";
-  description = "Alternates two model agents over a validated chess board.";
   initialState: ChessState = initialChessState;
+
+  render() {
+    return this.define({
+      model: "openrouter/openai/gpt-5-mini",
+      displayName: "Agent JSX Chess",
+      description: "Alternates two model agents over a validated chess board.",
+    });
+  }
 
   get turn() {
     return turnFor(this.state);

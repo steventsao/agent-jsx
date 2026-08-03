@@ -18,10 +18,65 @@ export interface HostNode {
 }
 
 const INFRA_KINDS = new Set<string>(["sensor", "schedule", "subagent", "tool", "task"]);
+/** Compiler-owned host markers that keep class definition fields disjoint. */
+export const AGENT_DEFINITION_PROMPT_ZONE = "agent-definition-prompt-zone";
+export const AGENT_DEFINITION_TOOLS_ZONE = "agent-definition-tools-zone";
+const DEFINITION_HOST_KINDS = new Set<string>([
+  ...INFRA_KINDS,
+  AGENT_DEFINITION_PROMPT_ZONE,
+  AGENT_DEFINITION_TOOLS_ZONE,
+  "prompt",
+  "sys",
+  "msg",
+  "scope",
+  "text",
+]);
+const PROMPT_HOST_KINDS = new Set(["prompt", "sys", "msg", "scope", "text"]);
+
+function validatePromptZone(node: HostNode): void {
+  const validate = (child: HostNode): void => {
+    if (!PROMPT_HOST_KINDS.has(child.type)) {
+      throw new Error(
+        `[agent-jsx] agent definition.prompt may contain only prompt JSX and text; found <${child.type}>`,
+      );
+    }
+    for (const nested of child.children) validate(nested);
+  };
+  for (const child of node.children) validate(child);
+}
+
+function validateToolsZone(node: HostNode): void {
+  for (const child of node.children) {
+    if (child.type !== "tool") {
+      throw new Error(
+        `[agent-jsx] agent definition.tools may contain only declarative <tool> nodes; found <${child.type}>`,
+      );
+    }
+    if (child.children.length > 0) {
+      throw new Error(
+        `[agent-jsx] agent definition.tools may contain only declarative <tool> nodes; <tool> must not have children`,
+      );
+    }
+  }
+}
 
 /** Sweep the committed tree into a flat desired-infra list, keyed by identity. */
 export function collectInfra(node: HostNode | null, out: InfraRecord[] = []): InfraRecord[] {
   if (!node) return out;
+  if (node.type === AGENT_DEFINITION_PROMPT_ZONE) {
+    validatePromptZone(node);
+    return out;
+  }
+  if (node.type === AGENT_DEFINITION_TOOLS_ZONE) {
+    validateToolsZone(node);
+    for (const child of node.children) collectInfra(child, out);
+    return out;
+  }
+  if (!DEFINITION_HOST_KINDS.has(node.type)) {
+    throw new Error(
+      `[agent-jsx] unsupported host element <${node.type}>; agent definitions cannot render UI`,
+    );
+  }
   if (INFRA_KINDS.has(node.type)) {
     const { name, __agentBindings, __agentTarget, ...rest } = node.props as {
       name?: unknown;
@@ -86,6 +141,11 @@ export function collectPrompt(roots: HostNode[]): PromptBlock[] {
       : node.children.map(textOf).join("");
 
   const walk = (node: HostNode, parentPriority: number, role: "system" | "user") => {
+    if (!PROMPT_HOST_KINDS.has(node.type)) {
+      throw new Error(
+        `[agent-jsx] unsupported host element <${node.type}>; agent definitions cannot render UI`,
+      );
+    }
     const p = node.props.p as number | undefined;
     const prel = node.props.prel as number | undefined;
     const effective = p !== undefined ? p : parentPriority + (prel ?? 0);
@@ -101,6 +161,15 @@ export function collectPrompt(roots: HostNode[]): PromptBlock[] {
 
   const findPrompts = (node: HostNode | null) => {
     if (!node) return;
+    if (node.type === AGENT_DEFINITION_PROMPT_ZONE) {
+      validatePromptZone(node);
+      for (const child of node.children) findPrompts(child);
+      return;
+    }
+    if (node.type === AGENT_DEFINITION_TOOLS_ZONE) {
+      validateToolsZone(node);
+      return;
+    }
     if (node.type === "prompt") for (const child of node.children) walk(child, BASE, "user");
     else for (const child of node.children) findPrompts(child);
   };

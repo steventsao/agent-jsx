@@ -82,7 +82,14 @@ const withRuntimeDir = (fn: (dir: string) => void) => {
   }
 };
 
-const RUNTIME_FILES = ["tree.ts", "store.ts", "prompt.ts", "jsx-runtime.ts", "compile/evaluate.ts"];
+const RUNTIME_FILES = [
+  "tree.ts",
+  "store.ts",
+  "prompt.ts",
+  "agent-definition.tsx",
+  "jsx-runtime.ts",
+  "compile/evaluate.ts",
+];
 
 describe("emitCloudflare — intervalScale", () => {
   const root = { spec: Ticking.spec, componentName: "Ticking", componentImport: "./ticking.tsx" };

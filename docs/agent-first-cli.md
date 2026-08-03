@@ -12,8 +12,8 @@ exactly the agent-legible property.
 ```
 agent-jsx init <name>            scaffold an agent package (component files + tsconfig + skills stub)
 agent-jsx sim <entry.tsx>        run the deterministic SimHost timeline (offline dev loop)
-agent-jsx compile <entry.tsx>    emit cloudflare | flue targets + wrangler fragment (+ --fixtures to lock goldens)
-agent-jsx test                   the layered gates: unit → workerd → flue (what /compat does today)
+agent-jsx compile <entry.tsx>    emit Cloudflare reconcile/model targets; legacy low-level Flue on request (+ wrangler/fixtures)
+agent-jsx test                   the layered gates: unit → workerd → legacy Flue (what /compat does today)
 agent-jsx deploy <entry.tsx>     compile + wrangler deploy + post-deploy probe (state/prompt endpoints)
 agent-jsx inspect <url>          read a deployed agent: /state /prompt /codemode
 ```
