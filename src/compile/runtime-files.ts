@@ -10,6 +10,7 @@
  *   - `types.ts`           — InfraRecord & friends (react import is type-only)
  *   - `agent-component.tsx`— agentComponent() (jsx only; react core, no DOM)
  *   - `agent-class.tsx`    — hierarchy-free Cloudflare-style authoring layer
+ *   - `agent-definition.tsx`— branded render definition + normalization
  *   - `callable.ts`       — callable decorator + explicit callable refs
  *   - `workflow-executor.ts`— runReactiveWorkflow (v0.5 flue state→render loop)
  *   - `compile/evaluate.ts`— the ~70-line element walker
@@ -30,6 +31,7 @@ const RUNTIME_FILES: ReadonlyArray<readonly [src: string, dest: string]> = [
   ["../intrinsics.d.ts", "intrinsics.d.ts"],
   ["../callable.ts", "callable.ts"],
   ["../agent-component.tsx", "agent-component.tsx"],
+  ["../agent-definition.tsx", "agent-definition.tsx"],
   ["../agent-class.tsx", "agent-class.tsx"],
   ["../workflow-executor.ts", "workflow-executor.ts"],
   ["./evaluate.ts", "compile/evaluate.ts"],
@@ -43,7 +45,7 @@ const RUNTIME_FILES: ReadonlyArray<readonly [src: string, dest: string]> = [
 export function emitRuntimeFiles(destDir: string): void {
   mkdirSync(`${destDir}/compile`, { recursive: true });
   for (const [src, dest] of RUNTIME_FILES) {
-    if (dest === "agent-component.tsx") {
+    if (dest === "agent-component.tsx" || dest === "agent-definition.tsx") {
       const source = readFileSync(new URL(src, import.meta.url), "utf8")
         .replace(`import type { ReactNode } from "react";\n`, "")
         .replaceAll("ReactNode", "unknown");

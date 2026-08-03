@@ -105,6 +105,7 @@ const think = emitThink(
     exportName: child.exportName,
     importPath: child.importPath,
     sampleProps: child.samples?.[0]?.props,
+    analysis: child.analysis,
   })),
   rootNode.analysis,
   { runtimeImport: "./runtime" },

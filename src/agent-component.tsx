@@ -38,8 +38,13 @@
 
 import type { ReactNode } from "react";
 import type { AgentStore } from "./store.ts";
-import { getOutputs } from "./store.ts";
+import { createStore, getOutputs } from "./store.ts";
 import { callableRefDeclaration } from "./callable.ts";
+import type {
+  AgentSkillSource,
+  AgentToolSet,
+  McpServerDefinitions,
+} from "./types.ts";
 
 /** What a child agent's implementation receives at runtime. `emit` is the
  *  continuation output channel — call it when the result is ready (e.g. in a
@@ -64,6 +69,23 @@ export type AgentRenderProps<
 export type AgentImpl<P, S extends Record<string, unknown>, O = unknown> = (
   props: AgentRenderProps<P, S, O>
 ) => ReactNode;
+
+/** Canonical model-facing definition consumed by compiler target adapters. */
+export interface ResolvedAgentDefinition {
+  model?: string;
+  description?: string;
+  displayName?: string;
+  /** Static model-facing input contract for native agent delegation. */
+  inputSchema?: BoundarySchema;
+  /** Static structured result contract for native agent delegation. */
+  outputSchema?: BoundarySchema;
+  /** Raw AI SDK-compatible tools. Metadata and structured results stay intact. */
+  tools: AgentToolSet;
+  skills: readonly AgentSkillSource[];
+  mcpServers: McpServerDefinitions;
+  /** Prompt and declarative tool JSX evaluated by the target adapter. */
+  tree: ReactNode;
+}
 
 /** The minimal schema shape a boundary validates against: a `parse` that
  *  returns the value or THROWS on mismatch. zod's `ZodType` satisfies this
@@ -177,9 +199,14 @@ interface AgentSpecBase<P extends object, S extends Record<string, unknown>, O> 
    *  this is the fallback when it does not — a plain string derived from state.
    *  Root and child agents alike may supply it (see prompt.ts:renderPromptOrFallback). */
   getPrompt?: (state: S) => string;
-  /** Opaque Agent Skills references. Class-authored agents expose these via
-   * getSkills(); Flue retains the references on generated profiles. */
-  skills?: readonly unknown[];
+  /** Cloudflare-compatible Agent Skills sources. */
+  skills?: readonly AgentSkillSource[];
+  /** Inert remote MCP server descriptors. Connections are target-runtime work,
+   * never compiler work. */
+  mcpServers?: McpServerDefinitions;
+  /** Compiler-owned normalized class-definition seam. Low-level component
+   * specs keep using the adjacent metadata fields directly. */
+  resolveDefinition?: (props: P, store: AgentStore<S>) => ResolvedAgentDefinition;
   /** Compiler-owned lowering metadata for Cloudflare-style authored classes.
    * Ordinary agentComponent specs omit these fields. */
   callableMethods?: string[];
@@ -558,10 +585,16 @@ export function agentComponent<
     // data). A mismatch throws loudly, naming the boundary. Runs on every render
     // (sim, generated DO, discovery), so representative sampleProps must also
     // satisfy the schema — the contract holds uniformly at compile and run time.
-    if (spec.inputSchema && !isToolSlotBinding) {
+    const inputSchema = !isToolSlotBinding && spec.resolveDefinition
+      ? spec.resolveDefinition(
+          childProps as unknown as P,
+          createStore(spec.initialState),
+        ).inputSchema
+      : spec.inputSchema;
+    if (inputSchema && !isToolSlotBinding) {
       const input: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(childProps)) if (typeof v !== "function") input[k] = v;
-      parseAtBoundary(spec.inputSchema, input, "input", name, spec.agentName);
+      parseAtBoundary(inputSchema, input, "input", name, spec.agentName);
     }
 
     // Reserved output slot. A real emitted output wins; at compile time (sample

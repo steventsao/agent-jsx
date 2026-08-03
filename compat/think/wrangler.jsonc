@@ -19,10 +19,22 @@
   "durable_objects": {
     "bindings": [
       { "name": "COORDINATOR", "class_name": "CoordinatorDurable" },
-      { "name": "TOOL_WORKER", "class_name": "ToolWorkerDurable" }
+      { "name": "TOOL_WORKER", "class_name": "ToolWorkerDurable" },
+      { "name": "DEFINITION_AGENT", "class_name": "DefinitionAgentDurable" },
+      { "name": "DYNAMIC_TOOLS", "class_name": "DynamicToolsDurable" },
+      { "name": "SKILL_PROMPT", "class_name": "SkillPromptDurable" },
+      { "name": "MCP_BARE_TOKEN", "class_name": "McpBareTokenDurable" },
+      { "name": "MCP_PREFIXED_TOKEN", "class_name": "McpPrefixedTokenDurable" },
+      { "name": "CLASS_COORDINATOR", "class_name": "ClassCoordinatorDurable" },
+      { "name": "CLASS_WORKER", "class_name": "ClassWorkerDurable" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["CoordinatorDurable", "ToolWorkerDurable"] }
+    { "tag": "v1", "new_sqlite_classes": ["CoordinatorDurable", "ToolWorkerDurable"] },
+    { "tag": "v2", "new_sqlite_classes": ["DynamicToolsDurable"] },
+    { "tag": "v3", "new_sqlite_classes": ["ClassCoordinatorDurable", "ClassWorkerDurable"] },
+    { "tag": "v4", "new_sqlite_classes": ["SkillPromptDurable"] },
+    { "tag": "v5", "new_sqlite_classes": ["DefinitionAgentDurable"] },
+    { "tag": "v6", "new_sqlite_classes": ["McpBareTokenDurable", "McpPrefixedTokenDurable"] }
   ]
 }

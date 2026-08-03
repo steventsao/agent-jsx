@@ -19,11 +19,15 @@ import type {
 } from "./types.ts";
 
 export const Fragment: unique symbol = Symbol.for("react.fragment") as never;
+export const dataElementBrand: unique symbol = Symbol.for(
+  "@steventsao/agent-jsx/data-element",
+) as never;
 
 export interface DataElement {
   type: unknown;
   props: Record<string, unknown>;
   key?: unknown;
+  readonly [dataElementBrand]: true;
 }
 
 export function jsx(
@@ -31,7 +35,11 @@ export function jsx(
   props: Record<string, unknown> | null,
   key?: unknown
 ): DataElement {
-  const el: DataElement = { type, props: props ?? {} };
+  const el: DataElement = {
+    type,
+    props: props ?? {},
+    [dataElementBrand]: true,
+  };
   if (key !== undefined) el.key = key;
   return el;
 }

@@ -4,6 +4,13 @@ const entrypoints = [
   ["@steventsao/agent-jsx/agent", ["Agent", "callable", "compileAgentClass", "composeAgent", "result"]],
   ["@steventsao/agent-jsx/agent-component", ["Agent", "agentComponent", "compileAgent"]],
   ["@steventsao/agent-jsx/compile/emit-agent-module", ["emitAgentModule"]],
+  ["@steventsao/agent-jsx/compile/cloudflare", [
+    "analyzeAgent",
+    "discoverAgents",
+    "discoverToolSlots",
+    "emitCloudflare",
+    "emitThink",
+  ]],
   ["@steventsao/agent-jsx/jsx-runtime", ["Fragment", "jsx", "jsxs"]],
   ["@steventsao/agent-jsx/jsx-dev-runtime", ["Fragment", "jsxDEV"]],
 ];

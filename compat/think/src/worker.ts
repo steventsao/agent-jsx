@@ -4,6 +4,15 @@
 // turn would need a getModel() override (a mock LanguageModelV3, see the spec).
 import { routeAgentRequest } from "agents";
 export { CoordinatorDurable, ToolWorkerDurable } from "./generated/think.cloudflare.ts";
+export { DynamicToolsDurable } from "./generated/dynamic-tools.cloudflare.ts";
+export { DefinitionAgentDurable } from "./generated/definition.cloudflare.ts";
+export { SkillPromptDurable } from "./generated/skill-prompt.cloudflare.ts";
+export { McpBareTokenDurable } from "./generated/mcp-bare-token.cloudflare.ts";
+export { McpPrefixedTokenDurable } from "./generated/mcp-prefixed-token.cloudflare.ts";
+export {
+  ClassCoordinatorDurable,
+  ClassWorkerDurable,
+} from "./generated/class-agent-tool.cloudflare.ts";
 
 export default {
   async fetch(request: Request, env: unknown): Promise<Response> {

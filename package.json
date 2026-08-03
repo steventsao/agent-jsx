@@ -1,7 +1,7 @@
 {
   "name": "@steventsao/agent-jsx",
   "version": "0.1.0-alpha.0",
-  "description": "Compose typed agents as JSX and compile them to Cloudflare Agents, Cloudflare Think, or Flue.",
+  "description": "Compose typed agents as JSX and compile them to Cloudflare Agents.",
   "license": "Apache-2.0",
   "author": "Steven Tsao",
   "homepage": "https://github.com/steventsao/agent-jsx#readme",
@@ -40,6 +40,11 @@
       "import": "./dist/compile/emit-agent-module.js",
       "default": "./dist/compile/emit-agent-module.js"
     },
+    "./compile/cloudflare": {
+      "types": "./dist/compile/cloudflare.d.ts",
+      "import": "./dist/compile/cloudflare.js",
+      "default": "./dist/compile/cloudflare.js"
+    },
     "./jsx-runtime": {
       "types": "./dist/jsx-data-runtime.d.ts",
       "import": "./dist/jsx-data-runtime.js",
@@ -58,7 +63,7 @@
   },
   "scripts": {
     "build": "bun run clean && bun run build:js && bun run build:types",
-    "build:js": "bun build --target=node --format=esm --packages=external --sourcemap=external --outdir=dist --root=src src/agent-class.tsx src/agent-component.tsx src/compile/emit-agent-module.ts src/jsx-data-runtime.ts",
+    "build:js": "bun build --target=node --format=esm --packages=external --sourcemap=external --outdir=dist --root=src src/agent-class.tsx src/agent-component.tsx src/compile/emit-agent-module.ts src/compile/cloudflare.ts src/jsx-data-runtime.ts",
     "build:types": "tsc -p tsconfig.build.json",
     "clean": "bun -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
     "test": "bun test tests",

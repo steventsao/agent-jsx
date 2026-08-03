@@ -2,6 +2,7 @@ import {
   agentComponent,
   type AgentBoundaryProps,
   type AgentClass as BoundaryAgentClass,
+  type ResolvedAgentDefinition,
   type AgentSpec,
 } from "./agent-component.tsx";
 import {
@@ -11,14 +12,37 @@ import {
   result,
   type CallableRef,
 } from "./callable.ts";
-import type { AgentStore } from "./store.ts";
+import {
+  createAgentDefinition,
+  normalizeAgentDefinition,
+  type AgentDefinition,
+  type AgentDefinitionInput,
+} from "./agent-definition.tsx";
+import { createStore, type AgentStore } from "./store.ts";
 
 export { callable, result, type CallableRef } from "./callable.ts";
+export type { AgentDefinition, AgentDefinitionInput } from "./agent-definition.tsx";
+export type {
+  AgentSkillSource,
+  AgentToolSet,
+  McpServerDefinition,
+  McpServerDefinitions,
+  McpTransport,
+} from "./types.ts";
 
 type AnyMethod = (...args: any[]) => any;
 type AnyState = Record<string, unknown>;
 type AnyProps = object;
 type AgentNode = ReturnType<BoundaryAgentClass<any, any, any>>;
+const REMOVED_DEFINITION_MEMBERS = [
+  "model",
+  "description",
+  "displayName",
+  "getPrompt",
+  "getTools",
+  "getSkills",
+] as const;
+type RemovedDefinitionMember = (typeof REMOVED_DEFINITION_MEMBERS)[number];
 
 interface BoundContext<S extends AnyState, P extends AnyProps> {
   store: AgentStore<S>;
@@ -26,11 +50,9 @@ interface BoundContext<S extends AnyState, P extends AnyProps> {
 }
 
 /**
- * Target-neutral, Cloudflare/agents-style authoring base.
- *
- * `render()` is UI-only and is deliberately absent from compiler evaluation.
- * Agent context comes from getPrompt/getTools/getSkills; durable behavior uses
- * state/setState and explicitly callable methods.
+ * Target-neutral, Cloudflare/agents-style authoring base. `render()` declares
+ * the complete model-facing definition; durable behavior remains ordinary
+ * state/setState plus explicitly callable methods.
  */
 export abstract class Agent<
   S extends AnyState,
@@ -39,9 +61,7 @@ export abstract class Agent<
   /** Type-only carrier used by the compiler API; no runtime field is emitted. */
   declare readonly __agentTypes: { state: S; props: P };
   abstract initialState: S;
-  abstract model: string;
-  description?: string;
-  displayName?: string;
+  abstract render(): AgentDefinition<P, any>;
 
   #bound?: BoundContext<S, P>;
   #detachedState?: S;
@@ -62,23 +82,11 @@ export abstract class Agent<
     this.#detachedState = typeof next === "function" ? next(this.state) : next;
   }
 
-  /** Priompt JSX or a plain string. */
-  getPrompt(): AgentNode | string | null {
-    return null;
-  }
-
-  /** AI SDK-style object or declarative <tool> JSX. */
-  getTools(): Record<string, unknown> | AgentNode | null {
-    return null;
-  }
-
-  getSkills(): readonly unknown[] {
-    return [];
-  }
-
-  /** Optional UI projection only. Codegen never treats this as agent context. */
-  render(): AgentNode {
-    return null;
+  /** Brand and type-check the sole legal render result. */
+  protected define<O = unknown>(
+    definition: AgentDefinitionInput<P, O>,
+  ): AgentDefinition<P, O> {
+    return createAgentDefinition(definition);
   }
 
   /** @internal compiler binding seam. */
@@ -88,21 +96,21 @@ export abstract class Agent<
   }
 }
 
-export interface AgentDefinition<I extends Agent<any, any> = Agent<any, any>> {
+export interface AgentConstructor<I extends Agent<any, any> = Agent<any, any>> {
   new (): I;
   agentName: string;
 }
 
-type InstanceOf<C> = C extends AgentDefinition<infer I> ? I : never;
+type InstanceOf<C> = C extends AgentConstructor<infer I> ? I : never;
 type StateOf<C> = InstanceOf<C>["__agentTypes"]["state"];
 type PropsOf<C> = InstanceOf<C>["__agentTypes"]["props"];
 
-type AuthorMemberKeys<C extends AgentDefinition<any>> = Exclude<
+type AuthorMemberKeys<C extends AgentConstructor<any>> = Exclude<
   keyof InstanceOf<C>,
-  keyof Agent<any, any>
+  keyof Agent<any, any> | RemovedDefinitionMember
 >;
 
-export type AgentBindings<C extends AgentDefinition<any>> = {
+export type AgentBindings<C extends AgentConstructor<any>> = {
   [K in AuthorMemberKeys<C>]: InstanceOf<C>[K] extends AnyMethod
     ? CallableRef<InstanceOf<C>[K]>
     : InstanceOf<C>[K];
@@ -119,7 +127,7 @@ interface ClassSpecRuntime<P extends AnyProps, S extends AnyState> {
   ): unknown | Promise<unknown>;
 }
 
-export type CompiledAgentClass<C extends AgentDefinition<any>> = ((
+export type CompiledAgentClass<C extends AgentConstructor<any>> = ((
   props: PropsOf<C> & AgentBoundaryProps & {
     children?: (bindings: AgentBindings<C>) => AgentNode;
   },
@@ -141,6 +149,23 @@ function prototypesUntilAgent(value: object): object[] {
     prototype = Object.getPrototypeOf(prototype) as object | null;
   }
   return prototypes;
+}
+
+function removedDefinitionMembers(value: Agent<any, any>): RemovedDefinitionMember[] {
+  const declared = new Set(Object.getOwnPropertyNames(value));
+  for (const prototype of prototypesUntilAgent(value)) {
+    for (const name of Object.getOwnPropertyNames(prototype)) declared.add(name);
+  }
+  return REMOVED_DEFINITION_MEMBERS.filter((name) => declared.has(name));
+}
+
+function assertDefinitionMigration(value: Agent<any, any>, agentName: string): void {
+  const removed = removedDefinitionMembers(value);
+  if (!removed.length) return;
+  throw new Error(
+    `[agent-jsx] Agent class "${agentName}" still declares removed members: ${removed.join(", ")}. ` +
+      "Move model, metadata, prompt, tools, skills, and MCP servers into render() { return this.define({...}) }.",
+  );
 }
 
 function callableNames(value: Agent<any, any>): string[] {
@@ -174,44 +199,128 @@ function createBindings<S extends AnyState, P extends AnyProps>(
   return bindings;
 }
 
-function normalizePrompt(value: AgentNode | string | null): AgentNode {
-  if (typeof value === "string") return <prompt><sys p={10}>{value}</sys></prompt>;
-  return value;
+interface StaticAgentDefinition {
+  model: string;
+  description?: string;
+  displayName?: string;
+  inputSchema?: ResolvedAgentDefinition["inputSchema"];
+  outputSchema?: ResolvedAgentDefinition["outputSchema"];
+  skills: readonly unknown[];
+  mcpServers: ResolvedAgentDefinition["mcpServers"];
 }
 
-function normalizeTools(value: Record<string, unknown> | AgentNode | null): AgentNode {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    Array.isArray(value) ||
-    ("type" in value && "props" in value)
-  ) return value as AgentNode;
-  return Object.entries(value).flatMap(([name, raw]) => {
-    if (!raw || typeof raw !== "object") return [];
-    const definition = raw as {
-      description?: unknown;
-      execute?: unknown;
-      run?: unknown;
-    };
-    const run = typeof definition.execute === "function"
-      ? definition.execute
-      : typeof definition.run === "function"
-        ? definition.run
-        : undefined;
-    if (!run) return [];
-    return [
-      <tool
-        key={name}
-        name={name}
-        description={String(definition.description ?? "")}
-        run={run as (input: Record<string, unknown>) => string | Promise<string>}
-      />,
-    ];
+function staticDefinitionOf(definition: ResolvedAgentDefinition): StaticAgentDefinition {
+  return {
+    model: definition.model as string,
+    description: definition.description,
+    displayName: definition.displayName,
+    inputSchema: definition.inputSchema,
+    outputSchema: definition.outputSchema,
+    skills: definition.skills,
+    mcpServers: definition.mcpServers,
+  };
+}
+
+function structurallyEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => structurallyEqual(value, right[index]))
+    );
+  }
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") {
+    return false;
+  }
+  const leftPrototype = Object.getPrototypeOf(left);
+  const rightPrototype = Object.getPrototypeOf(right);
+  const leftIsPlain = leftPrototype === Object.prototype || leftPrototype === null;
+  const rightIsPlain = rightPrototype === Object.prototype || rightPrototype === null;
+  if (!leftIsPlain || !rightIsPlain) return false;
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] && structurallyEqual(leftRecord[key], rightRecord[key]),
+    )
+  );
+}
+
+const NO_SCHEMA_SHAPE = Symbol("no-schema-shape");
+
+/**
+ * Prefer a schema's portable declaration over object identity. Zod 4 exposes
+ * this directly and produces plain JSON Schema, so two equivalent inline
+ * declarations compare equal while genuinely different contracts still fail
+ * the static-definition check. Opaque schemas retain the conservative
+ * reference-identity behavior.
+ */
+function portableSchemaShape(schema: unknown): unknown | typeof NO_SCHEMA_SHAPE {
+  if (!schema || typeof schema !== "object") return NO_SCHEMA_SHAPE;
+  const record = schema as Record<string, unknown>;
+  if (typeof record.toJSONSchema === "function") {
+    try {
+      return (record.toJSONSchema as () => unknown).call(schema);
+    } catch {
+      return NO_SCHEMA_SHAPE;
+    }
+  }
+  if (record.jsonSchema && typeof record.jsonSchema === "object") {
+    return record.jsonSchema;
+  }
+  return NO_SCHEMA_SHAPE;
+}
+
+function schemasEquivalent(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  const leftShape = portableSchemaShape(left);
+  const rightShape = portableSchemaShape(right);
+  return (
+    leftShape !== NO_SCHEMA_SHAPE &&
+    rightShape !== NO_SCHEMA_SHAPE &&
+    structurallyEqual(leftShape, rightShape)
+  );
+}
+
+/** SkillSource deliberately exposes stable id + fingerprint metadata so an
+ * author may construct an equivalent source object inside render() without
+ * making the declared skill contract appear dynamic. */
+function skillsEquivalent(left: readonly unknown[], right: readonly unknown[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => {
+    const other = right[index];
+    if (!value || !other || typeof value !== "object" || typeof other !== "object") {
+      return Object.is(value, other);
+    }
+    const source = value as { id?: unknown; fingerprint?: unknown };
+    const candidate = other as { id?: unknown; fingerprint?: unknown };
+    return source.id === candidate.id && source.fingerprint === candidate.fingerprint;
   });
 }
 
+function changedStaticField(
+  baseline: StaticAgentDefinition,
+  next: StaticAgentDefinition,
+): keyof StaticAgentDefinition | null {
+  for (const key of ["model", "description", "displayName"] as const) {
+    if (baseline[key] !== next[key]) return key;
+  }
+  for (const key of ["inputSchema", "outputSchema"] as const) {
+    if (!schemasEquivalent(baseline[key], next[key])) return key;
+  }
+  if (!skillsEquivalent(baseline.skills, next.skills)) return "skills";
+  if (!structurallyEqual(baseline.mcpServers, next.mcpServers)) return "mcpServers";
+  return null;
+}
+
 /** Compiler lowering for one hierarchy-free authored class. */
-export function compileAgentClass<C extends AgentDefinition<any>>(
+export function compileAgentClass<C extends AgentConstructor<any>>(
   Definition: C,
 ): CompiledAgentClass<C> {
   type S = StateOf<C>;
@@ -219,7 +328,7 @@ export function compileAgentClass<C extends AgentDefinition<any>>(
   type I = InstanceOf<C>;
   const detached = new Definition() as I;
   if (!Definition.agentName) throw new Error("[agent-jsx] Agent class needs static agentName");
-  if (!detached.model) throw new Error(`[agent-jsx] Agent class "${Definition.agentName}" needs model`);
+  assertDefinitionMigration(detached, Definition.agentName);
 
   const methods = callableNames(detached);
   const instantiate = (props: P, store: AgentStore<S>) =>
@@ -239,25 +348,43 @@ export function compileAgentClass<C extends AgentDefinition<any>>(
     },
   };
 
-  const spec = {
+  let baseline: StaticAgentDefinition | undefined;
+  let spec: AgentSpec<P, S> & ClassSpecRuntime<P, S>;
+  const resolveDefinition = (props: P, store: AgentStore<S>) => {
+    const instance = instantiate(props, store);
+    const definition = normalizeAgentDefinition(instance.render(), Definition.agentName);
+    const next = staticDefinitionOf(definition);
+    if (baseline) {
+      const changed = changedStaticField(baseline, next);
+      if (changed) {
+        throw new Error(
+          `[agent-jsx] agent "${Definition.agentName}": static definition field "${changed}" changed between renders`,
+        );
+      }
+    } else {
+      baseline = next;
+    }
+    spec.sampleProps ??= props;
+    // Preserve the low-level AgentSpec metadata surface for existing compiler
+    // consumers after the first real/sample definition evaluation.
+    spec.model = definition.model;
+    spec.description = definition.description;
+    spec.displayName = definition.displayName;
+    spec.inputSchema = definition.inputSchema;
+    spec.outputSchema = definition.outputSchema;
+    spec.skills = definition.skills;
+    spec.mcpServers = definition.mcpServers;
+    return definition;
+  };
+
+  spec = {
     agentName: Definition.agentName,
-    model: detached.model,
-    description: detached.description,
-    displayName: detached.displayName,
     initialState: detached.initialState,
-    skills: detached.getSkills(),
+    resolveDefinition,
     impl: ({ store, emit: _emit, ...props }: P & {
       store: AgentStore<S>;
       emit?: (output: unknown) => void | Promise<void>;
-    }) => {
-      const instance = instantiate(props as unknown as P, store);
-      return (
-        <>
-          {normalizePrompt(instance.getPrompt())}
-          {normalizeTools(instance.getTools())}
-        </>
-      );
-    },
+    }) => resolveDefinition(props as unknown as P, store).tree,
     ...runtime,
   } as unknown as AgentSpec<P, S> & ClassSpecRuntime<P, S>;
 
@@ -270,7 +397,7 @@ export function compileAgentClass<C extends AgentDefinition<any>>(
   return Compiled;
 }
 
-type AnyCompiledClass = CompiledAgentClass<AgentDefinition<any>>;
+type AnyCompiledClass = CompiledAgentClass<AgentConstructor<any>>;
 
 interface CompiledAgentElement<C extends AnyCompiledClass> {
   type: C;
@@ -300,8 +427,25 @@ export function composeAgent(
   }
   const base = Root.spec;
   type RootState = typeof base.initialState;
+  const rootDefinition = base.resolveDefinition?.(
+    rootProps as never,
+    createStore(base.initialState),
+  );
   const spec = {
     ...base,
+    ...(rootDefinition
+      ? {
+          model: rootDefinition.model,
+          description: rootDefinition.description,
+          displayName: rootDefinition.displayName,
+          inputSchema: rootDefinition.inputSchema,
+          outputSchema: rootDefinition.outputSchema,
+          skills: rootDefinition.skills,
+          mcpServers: rootDefinition.mcpServers,
+          resolveDefinition: (_props: {}, store: AgentStore<RootState>) =>
+            base.resolveDefinition!(rootProps as never, store),
+        }
+      : {}),
     sampleProps: {},
     impl: ({ store }: { store: AgentStore<RootState> }) => (
       <>
