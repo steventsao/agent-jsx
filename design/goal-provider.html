@@ -1,0 +1,842 @@
+<title>GoalProvider — agent-jsx mission control</title>
+<style>
+  :root {
+    --bg: #0E1218;
+    --panel: #151B23;
+    --panel-2: #1A222C;
+    --line: #263041;
+    --ink: #E4EBF2;
+    --ink-dim: #93A1B3;
+    --ink-faint: #5C6B7E;
+    --accent: #EBAE3A;
+    --accent-soft: rgba(235, 174, 58, 0.14);
+    --ok: #46B584;
+    --ok-soft: rgba(70, 181, 132, 0.14);
+    --crit: #E0554D;
+    --crit-soft: rgba(224, 85, 77, 0.14);
+    --agent: #5E9FE0;
+    --agent-soft: rgba(94, 159, 224, 0.14);
+    --sensor: #9B7EDE;
+    --sensor-soft: rgba(155, 126, 222, 0.15);
+    --det: #7E93A8;
+    --det-soft: rgba(126, 147, 168, 0.14);
+    --code-k: #C792EA00; /* unused guard */
+    --display: "Futura", "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #EEF1F4;
+      --panel: #FFFFFF;
+      --panel-2: #F5F7FA;
+      --line: #D5DCE4;
+      --ink: #1A222C;
+      --ink-dim: #4C5A6B;
+      --ink-faint: #8493A5;
+      --accent: #B87F1E;
+      --accent-soft: rgba(184, 127, 30, 0.13);
+      --ok: #1F8A5D;
+      --ok-soft: rgba(31, 138, 93, 0.12);
+      --crit: #C4423B;
+      --crit-soft: rgba(196, 66, 59, 0.11);
+      --agent: #2F6FB5;
+      --agent-soft: rgba(47, 111, 181, 0.11);
+      --sensor: #6E4FC1;
+      --sensor-soft: rgba(110, 79, 193, 0.11);
+      --det: #5D7185;
+      --det-soft: rgba(93, 113, 133, 0.12);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0E1218; --panel: #151B23; --panel-2: #1A222C; --line: #263041;
+    --ink: #E4EBF2; --ink-dim: #93A1B3; --ink-faint: #5C6B7E;
+    --accent: #EBAE3A; --accent-soft: rgba(235,174,58,0.14);
+    --ok: #46B584; --ok-soft: rgba(70,181,132,0.14);
+    --crit: #E0554D; --crit-soft: rgba(224,85,77,0.14);
+    --agent: #5E9FE0; --agent-soft: rgba(94,159,224,0.14);
+    --sensor: #9B7EDE; --sensor-soft: rgba(155,126,222,0.15);
+    --det: #7E93A8; --det-soft: rgba(126,147,168,0.14);
+  }
+  :root[data-theme="light"] {
+    --bg: #EEF1F4; --panel: #FFFFFF; --panel-2: #F5F7FA; --line: #D5DCE4;
+    --ink: #1A222C; --ink-dim: #4C5A6B; --ink-faint: #8493A5;
+    --accent: #B87F1E; --accent-soft: rgba(184,127,30,0.13);
+    --ok: #1F8A5D; --ok-soft: rgba(31,138,93,0.12);
+    --crit: #C4423B; --crit-soft: rgba(196,66,59,0.11);
+    --agent: #2F6FB5; --agent-soft: rgba(47,111,181,0.11);
+    --sensor: #6E4FC1; --sensor-soft: rgba(110,79,193,0.11);
+    --det: #5D7185; --det-soft: rgba(93,113,133,0.12);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  button {
+    font: inherit;
+    color: inherit;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 5px 12px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--ink-faint); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 22px;
+    padding: 14px 20px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .wordmark {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+  }
+  .wordmark small {
+    display: block;
+    font-family: var(--mono);
+    font-weight: 400;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+    text-transform: none;
+    color: var(--ink-faint);
+    margin-top: 1px;
+  }
+  .goal-title {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink-dim);
+    border-left: 3px solid var(--accent);
+    padding-left: 12px;
+  }
+  .goal-title b { color: var(--ink); font-weight: 600; }
+  .meters { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 11px;
+    padding: 4px 10px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--panel);
+    white-space: nowrap;
+  }
+  .chip .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-faint); flex: none; }
+  .chip.ok .dot { background: var(--ok); }
+  .chip.warn .dot { background: var(--accent); }
+  .chip.crit .dot { background: var(--crit); }
+  .chip .lbl { color: var(--ink-faint); letter-spacing: 0.06em; text-transform: uppercase; font-size: 9.5px; }
+  #phase-chip { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  #t-chip { font-variant-numeric: tabular-nums; min-width: 74px; justify-content: center; }
+  .transport { display: flex; gap: 6px; align-items: center; }
+  .transport .primary { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .transport .danger { color: var(--crit); }
+  .transport .danger:hover:not(:disabled) { border-color: var(--crit); background: var(--crit-soft); }
+
+  /* ---------- layout ---------- */
+  main {
+    display: grid;
+    grid-template-columns: minmax(330px, 1.05fr) minmax(430px, 1.35fr) minmax(320px, 1fr);
+    grid-template-areas: "source machine dash";
+    gap: 14px;
+    padding: 14px 20px 6px;
+    align-items: start;
+  }
+  @media (max-width: 1180px) {
+    main {
+      grid-template-columns: 1fr;
+      grid-template-areas: "machine" "dash" "source";
+    }
+  }
+  section.pane {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    min-width: 0;
+  }
+  .pane-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--line);
+  }
+  .pane-head h2 {
+    margin: 0;
+    font-family: var(--display);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+  }
+  .pane-head .note { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); }
+  #source { grid-area: source; }
+  #machine { grid-area: machine; }
+  #dash { grid-area: dash; display: grid; gap: 14px; background: none; border: none; overflow: visible; }
+  #dash > div { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+
+  /* ---------- source pane ---------- */
+  #source pre {
+    margin: 0;
+    padding: 12px 0 16px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 11.3px;
+    line-height: 1.62;
+    color: var(--ink-dim);
+  }
+  .src-block { display: block; padding: 0 14px; border-left: 3px solid transparent; }
+  .src-block.active {
+    background: var(--accent-soft);
+    border-left-color: var(--accent);
+    color: var(--ink);
+  }
+  .src-block.flash { animation: srcflash 0.5s ease-out; }
+  @keyframes srcflash { 0% { background: var(--accent-soft); filter: brightness(1.45); } }
+  .tk { color: var(--sensor); }            /* keyword */
+  .tc { color: var(--agent); }             /* component / type */
+  .ts { color: var(--ok); }                /* string */
+  .tp { color: var(--accent); }            /* result() grants */
+  .tm { color: var(--ink-faint); font-style: italic; } /* comment */
+  .src-block.active .tm { color: var(--ink-faint); }
+
+  /* ---------- machine pane ---------- */
+  #machine svg { display: block; width: 100%; height: auto; }
+  .node rect {
+    fill: var(--panel-2);
+    stroke: var(--line);
+    stroke-width: 1.2;
+  }
+  .node text {
+    font-family: var(--display);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    fill: var(--ink-dim);
+    text-anchor: middle;
+    text-transform: uppercase;
+  }
+  .node.visited rect { stroke: var(--ink-faint); }
+  .node.visited text { fill: var(--ink); }
+  .node.current rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.8; }
+  .node.current text { fill: var(--accent); }
+  .node.terminal-ok.current rect { fill: var(--ok-soft); stroke: var(--ok); }
+  .node.terminal-ok.current text { fill: var(--ok); }
+  .node.terminal-bad.current rect { fill: var(--crit-soft); stroke: var(--crit); }
+  .node.terminal-bad.current text { fill: var(--crit); }
+  @media (prefers-reduced-motion: no-preference) {
+    .node.current rect { animation: nodepulse 1.6s ease-in-out infinite; }
+    @keyframes nodepulse { 50% { stroke-opacity: 0.45; } }
+  }
+  .edge path { fill: none; stroke: var(--line); stroke-width: 1.4; marker-end: url(#arrow); }
+  .edge.dashed path { stroke-dasharray: 4 4; }
+  .edge text {
+    font-family: var(--mono);
+    font-size: 8.2px;
+    letter-spacing: 0.04em;
+    fill: var(--ink-faint);
+  }
+  .edge.fired path { stroke: var(--accent); stroke-width: 2; }
+  .edge.fired text { fill: var(--accent); }
+
+  #records { border-top: 1px solid var(--line); }
+  #records-list { padding: 8px 14px 12px; display: grid; gap: 5px; }
+  .rec {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .rec .kind {
+    flex: none;
+    width: 74px;
+    font-size: 9px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    padding: 2px 0;
+    text-align: center;
+    border-radius: 4px;
+  }
+  .rec .name { color: var(--ink); }
+  .rec .meta { color: var(--ink-faint); margin-left: auto; font-variant-numeric: tabular-nums; }
+  .actor-det { background: var(--det-soft); color: var(--det); }
+  .actor-agent { background: var(--agent-soft); color: var(--agent); }
+  .actor-sensor { background: var(--sensor-soft); color: var(--sensor); }
+  .actor-human { background: var(--accent-soft); color: var(--accent); }
+  .rec.done .name { color: var(--ink-faint); text-decoration: line-through; }
+  .rec .bar {
+    flex: none; width: 52px; height: 4px; border-radius: 2px;
+    background: var(--line); overflow: hidden; position: relative;
+  }
+  .rec .bar i { position: absolute; inset: 0; right: auto; background: var(--agent); border-radius: 2px; }
+  .rec.done .bar i { background: var(--ok); }
+
+  /* ---------- dashboard ---------- */
+  #criteria-list { padding: 8px 14px 12px; display: grid; gap: 6px; }
+  .crit-row { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-size: 11.3px; }
+  .crit-row .st { flex: none; width: 14px; text-align: center; font-size: 11px; color: var(--ink-faint); }
+  .crit-row.pass .st { color: var(--ok); }
+  .crit-row.fail .st { color: var(--crit); }
+  .crit-row.checking .st { color: var(--agent); }
+  .crit-row .lbl { color: var(--ink); }
+  .crit-row.fail .lbl { color: var(--crit); }
+  .crit-row .via {
+    margin-left: auto; flex: none;
+    font-size: 9px; letter-spacing: 0.07em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 4px;
+  }
+  .via-none { background: var(--crit-soft); color: var(--crit); }
+  #vibes-row { padding: 8px 14px 12px; border-top: 1px dashed var(--line); }
+  #vibes-row label { display: flex; gap: 8px; align-items: baseline; font-size: 11.5px; color: var(--ink-dim); cursor: pointer; font-family: var(--mono); }
+  #vibes-row input { accent-color: var(--accent); }
+
+  #gate-card, #blocked-card, #done-card { margin: 10px 14px 14px; border-radius: 8px; padding: 12px 14px; display: none; }
+  #gate-card {
+    border: 1px solid var(--accent);
+    background: var(--accent-soft);
+  }
+  #gate-card.show, #blocked-card.show, #done-card.show { display: block; }
+  #gate-card h3, #blocked-card h3, #done-card h3 {
+    margin: 0 0 6px;
+    font-family: var(--display);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  #gate-card h3 { color: var(--accent); }
+  #gate-card p, #blocked-card p, #done-card p { margin: 0 0 10px; font-size: 12.5px; color: var(--ink-dim); }
+  #gate-card .row { display: flex; gap: 8px; }
+  #gate-card .approve { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); font-weight: 600; }
+  #blocked-card { border: 1px solid var(--crit); background: var(--crit-soft); }
+  #blocked-card h3 { color: var(--crit); }
+  #blocked-card code { font-family: var(--mono); font-size: 11px; color: var(--ink); }
+  #done-card { border: 1px solid var(--ok); background: var(--ok-soft); }
+  #done-card h3 { color: var(--ok); }
+  #done-card p:last-child { margin-bottom: 0; }
+
+  #log {
+    padding: 8px 0 10px;
+    max-height: 300px;
+    overflow-y: auto;
+    font-family: var(--mono);
+    font-size: 10.8px;
+    line-height: 1.75;
+  }
+  #log .ln { padding: 0 14px; white-space: nowrap; color: var(--ink-dim); }
+  #log .t { color: var(--ink-faint); font-variant-numeric: tabular-nums; margin-right: 8px; }
+  #log .route { color: var(--ink-faint); }
+  #log .evt { color: var(--ink); font-weight: 600; }
+  #log .ln.transition { color: var(--accent); background: var(--accent-soft); }
+  #log .ln.transition .t, #log .ln.transition .evt { color: var(--accent); }
+  #log .ln.bad { color: var(--crit); }
+  #log .ln.bad .evt { color: var(--crit); }
+  #log .src-det { color: var(--det); }
+  #log .src-agent { color: var(--agent); }
+  #log .src-sensor { color: var(--sensor); }
+  #log .src-human { color: var(--accent); }
+
+  /* ---------- footer ---------- */
+  footer {
+    padding: 10px 20px 22px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 26px;
+    align-items: baseline;
+  }
+  footer .legend { display: flex; gap: 8px; flex-wrap: wrap; }
+  footer .k {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.05em;
+    color: var(--ink-dim);
+  }
+  footer .k i { width: 10px; height: 10px; border-radius: 3px; }
+  footer .map {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    max-width: 640px;
+  }
+  footer .map b { color: var(--ink-dim); font-weight: 600; }
+</style>
+
+<header>
+  <div class="wordmark">GoalProvider<small>agent-jsx · long-horizon goal, compiled</small></div>
+  <div class="goal-title">goal: <b>ship @steventsao/agent-jsx v0.6.0-alpha</b> — proven, deployed, signed off</div>
+  <div class="meters">
+    <span class="chip" id="verif-chip"><span class="dot"></span><span class="lbl">verifiable</span><span id="verif-val">—</span></span>
+    <span class="chip" id="achiev-chip"><span class="dot"></span><span class="lbl">achievable</span><span id="achiev-val">—</span></span>
+    <span class="chip" id="phase-chip"><span id="phase-val">assess</span></span>
+    <span class="chip" id="t-chip">t = 000</span>
+  </div>
+  <div class="transport">
+    <button id="btn-play" class="primary">▶ Run</button>
+    <button id="btn-step">Step</button>
+    <button id="btn-reset">Reset</button>
+    <button id="btn-chaos" class="danger" disabled title="Enabled once the docs-site is live (verify onward)">Kill docs-site</button>
+  </div>
+</header>
+
+<main>
+  <!-- ================= SOURCE ================= -->
+  <section class="pane" id="source">
+    <div class="pane-head"><h2>Authored surface</h2><span class="note">goal.tsx — the whole app is this composition</span></div>
+    <pre><span class="src-block" data-phase="_top"><span class="tm">// One provider owns the goal. Children only move the machine</span>
+<span class="tm">// through the explicit grant: result(handleGoalEvent).</span>
+<span class="tk">export const</span> ShipRelease = <span class="tc">composeAgent</span>(
+  &lt;<span class="tc">GoalProvider</span> name=<span class="ts">"ship-v0.6"</span> spec={releaseSpec}&gt;
+    {({ phase, plan, criteria, incident, handleGoalEvent }) =&gt; (
+      &lt;&gt;
+        &lt;<span class="tc">Sensor</span> name=<span class="ts">"uptime:docs"</span> url={DOCS_URL} every=<span class="ts">"30s"</span>
+                onDown={<span class="tp">result(handleGoalEvent)</span>} /&gt;</span><span class="src-block" data-phase="assess">
+        {phase === <span class="ts">"assess"</span> &amp;&amp; <span class="tm">// deterministic: is the spec verifiable?</span>
+          &lt;<span class="tc">AssessSpec</span> spec={releaseSpec}
+                      onResult={<span class="tp">result(handleGoalEvent)</span>} /&gt;}</span><span class="src-block" data-phase="plan">
+        {phase === <span class="ts">"plan"</span> &amp;&amp; <span class="tm">// model agent decomposes the goal</span>
+          &lt;<span class="tc">Agent</span> agentClass={<span class="tc">PlannerAgent</span>} spec={releaseSpec}
+                 onPlan={<span class="tp">result(handleGoalEvent)</span>} /&gt;}</span><span class="src-block" data-phase="execute">
+        {phase === <span class="ts">"execute"</span> &amp;&amp; plan.milestones.map((m) =&gt;
+          m.kind === <span class="ts">"agent"</span>
+            ? &lt;<span class="tc">Agent</span> key={m.id} agentClass={<span class="tc">WorkerAgent</span>} task={m}
+                     onResult={<span class="tp">result(handleGoalEvent)</span>} /&gt;
+            : &lt;<span class="tc">Step</span> key={m.id} run={m.run} <span class="tm">// deterministic code</span>
+                    onResult={<span class="tp">result(handleGoalEvent)</span>} /&gt;)}</span><span class="src-block" data-phase="verify">
+        {phase === <span class="ts">"verify"</span> &amp;&amp; criteria.map((c) =&gt;
+          &lt;<span class="tc">Verifier</span> key={c.id} criterion={c} <span class="tm">// det | sensor | agent</span>
+                    onCheck={<span class="tp">result(handleGoalEvent)</span>} /&gt;)}</span><span class="src-block" data-phase="review">
+        {phase === <span class="ts">"review"</span> &amp;&amp; <span class="tm">// human-in-review gate</span>
+          &lt;<span class="tc">HumanGate</span> name=<span class="ts">"review:owner"</span> summary={summarize(criteria)}
+                     onDecision={<span class="tp">result(handleGoalEvent)</span>} /&gt;}</span><span class="src-block" data-phase="repair">
+        {phase === <span class="ts">"repair"</span> &amp;&amp;
+          &lt;<span class="tc">Agent</span> agentClass={<span class="tc">RepairAgent</span>} incident={incident}
+                 onResult={<span class="tp">result(handleGoalEvent)</span>} /&gt;}</span><span class="src-block" data-phase="_bottom">
+      &lt;/&gt;
+    )}
+  &lt;/<span class="tc">GoalProvider</span>&gt;,
+);
+
+<span class="tm">// goal-provider.tsx — the deterministic core</span>
+<span class="tk">export class</span> <span class="tc">GoalProvider</span> <span class="tk">extends</span> <span class="tc">Agent</span>&lt;GoalState, GoalProps&gt; {
+  <span class="tk">static</span> agentName = <span class="ts">"goal-provider"</span>;
+  initialState = idleGoalState;
+
+  render() {
+    <span class="tk">return</span> <span class="tk">this</span>.define({
+      model: <span class="ts">"openrouter/openai/gpt-5-mini"</span>,
+      description: <span class="ts">"Owns one long-horizon goal as a state machine."</span>,
+    });
+  }
+
+  <span class="tp">@callable()</span>
+  handleGoalEvent(event: GoalEvent): <span class="tk">void</span> {
+    <span class="tm">// every edge in the diagram is one branch of this pure reducer</span>
+    <span class="tk">this</span>.setState((state) =&gt; <span class="tc">reduceGoal</span>(state, event));
+  }
+}</span></pre>
+  </section>
+
+  <!-- ================= MACHINE ================= -->
+  <section class="pane" id="machine">
+    <div class="pane-head"><h2>Compiled machine</h2><span class="note">reduceGoal, drawn — edges are events</span></div>
+    <svg viewBox="0 0 880 330" role="img" aria-label="Goal state machine diagram">
+      <defs>
+        <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0.6 L7.4,4 L0,7.4 z" fill="var(--ink-faint)"></path>
+        </marker>
+      </defs>
+      <!-- edges -->
+      <g class="edge" id="e-assess-plan"><path d="M148,80 L192,80"></path><text x="170" y="70" text-anchor="middle">SPEC_OK</text></g>
+      <g class="edge" id="e-plan-execute"><path d="M308,80 L352,80"></path><text x="330" y="70" text-anchor="middle">PLAN_READY</text></g>
+      <g class="edge" id="e-execute-verify"><path d="M468,80 L512,80"></path><text x="490" y="70" text-anchor="middle">MILESTONES</text></g>
+      <g class="edge" id="e-verify-review"><path d="M628,80 L672,80"></path><text x="650" y="70" text-anchor="middle">CHECKS_PASS</text></g>
+      <g class="edge" id="e-review-done"><path d="M730,100 L730,220"></path><text x="740" y="163">APPROVED</text></g>
+      <g class="edge" id="e-assess-blocked"><path d="M100,100 L155,220"></path><text x="60" y="163">SPEC_UNVERIFIABLE</text></g>
+      <g class="edge dashed" id="e-blocked-assess"><path d="M185,220 L128,102"></path><text x="196" y="182">SPEC_FIXED</text></g>
+      <g class="edge" id="e-verify-repair"><path d="M556,100 L516,220"></path><text x="452" y="163">CHECK_FAIL</text></g>
+      <g class="edge" id="e-repair-verify"><path d="M530,220 L584,102"></path><text x="576" y="182">REPAIRED</text></g>
+      <g class="edge" id="e-review-repair"><path d="M700,100 L560,232"></path><text x="648" y="150">CHANGES_REQUESTED</text></g>
+      <g class="edge dashed" id="e-done-repair"><path d="M672,240 L560,240"></path><text x="616" y="230" text-anchor="middle">DEPLOY_DOWN</text></g>
+      <!-- nodes: cx list — assess 90, plan 250, execute 410, verify 570, review 730 (row 60-100); blocked 170, repair 500, done 730 (row 220-260) -->
+      <g class="node" id="n-assess"><rect x="32" y="60" width="116" height="40" rx="8"></rect><text x="90" y="85">assess</text></g>
+      <g class="node" id="n-plan"><rect x="192" y="60" width="116" height="40" rx="8"></rect><text x="250" y="85">plan</text></g>
+      <g class="node" id="n-execute"><rect x="352" y="60" width="116" height="40" rx="8"></rect><text x="410" y="85">execute</text></g>
+      <g class="node" id="n-verify"><rect x="512" y="60" width="116" height="40" rx="8"></rect><text x="570" y="85">verify</text></g>
+      <g class="node" id="n-review"><rect x="672" y="60" width="116" height="40" rx="8"></rect><text x="730" y="85">review</text></g>
+      <g class="node terminal-bad" id="n-blocked"><rect x="112" y="220" width="116" height="40" rx="8"></rect><text x="170" y="245">blocked</text></g>
+      <g class="node" id="n-repair"><rect x="442" y="220" width="116" height="40" rx="8"></rect><text x="500" y="245">repair</text></g>
+      <g class="node terminal-ok" id="n-done"><rect x="672" y="220" width="116" height="40" rx="8"></rect><text x="730" y="245">done</text></g>
+      <text x="32" y="310" style="font-family: var(--mono); font-size: 9.5px; fill: var(--ink-faint);">done is not terminal — the uptime sensor keeps watching. dashed = long-horizon edges.</text>
+    </svg>
+    <div id="records">
+      <div class="pane-head"><h2>Mounted records</h2><span class="note">SimHost.reconcile — diff by (kind, name)</span></div>
+      <div id="records-list"></div>
+    </div>
+  </section>
+
+  <!-- ================= DASHBOARD ================= -->
+  <section id="dash">
+    <div>
+      <div class="pane-head"><h2>Success criteria</h2><span class="note">each needs a bound verifier</span></div>
+      <div id="criteria-list"></div>
+      <div id="vibes-row">
+        <label title="Changing the spec re-runs assess">
+          <input type="checkbox" id="vibes-toggle">
+          <span>add criterion <b>"users love it"</b> — no verifier bound (watch assess refuse it)</span>
+        </label>
+      </div>
+      <div id="gate-card" role="region" aria-live="polite">
+        <h3>Human gate · review:owner</h3>
+        <p id="gate-summary">—</p>
+        <div class="row">
+          <button class="approve" id="btn-approve">Approve release</button>
+          <button id="btn-reject">Request changes</button>
+        </div>
+      </div>
+      <div id="blocked-card" role="region" aria-live="polite">
+        <h3>Blocked · goal is not verifiable</h3>
+        <p><code>goal/verify: criterion "users love it" has no verifier binding — bind a &lt;Verifier&gt; or mark it advisory.</code></p>
+        <p>Same ethos as the emitter reporting dropped capabilities: the compiler refuses to pretend. Uncheck the criterion to emit <code>SPEC_FIXED</code>.</p>
+      </div>
+      <div id="done-card" role="region" aria-live="polite">
+        <h3>Goal verified</h3>
+        <p id="done-summary">—</p>
+        <p>The sensor is still mounted. Kill the docs-site and watch the goal regress to repair — long-horizon means never truly finished.</p>
+      </div>
+    </div>
+    <div>
+      <div class="pane-head"><h2>Event log</h2><span class="note">every transition is replayable (opLog)</span></div>
+      <div id="log" aria-live="off"></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="legend">
+    <span class="k"><i style="background: var(--det)"></i>deterministic step</span>
+    <span class="k"><i style="background: var(--agent)"></i>model agent</span>
+    <span class="k"><i style="background: var(--sensor)"></i>sensor</span>
+    <span class="k"><i style="background: var(--accent)"></i>human gate</span>
+  </div>
+  <div class="map">
+    <b>result(handleGoalEvent)</b> is the only way any child moves the machine — the ChessMatch grant contract.
+    <b>reduceGoal</b> is pure deterministic code: replay the log, get the same goal state.
+    Records mount/unmount per phase via reconcile-by-(kind,name); a record that stops being rendered simply stops being re-delegated.
+  </div>
+</footer>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- model ----------
+  const CRITERIA = [
+    { id: "ci-green",    label: "bun run ci exits 0",            actor: "det",    dur: 2 },
+    { id: "compat-pass", label: "compat suites green in workerd", actor: "det",   dur: 3 },
+    { id: "deployed",    label: "docs-site returns 200",          actor: "sensor", dur: 2 },
+    { id: "changelog",   label: "CHANGELOG covers the diff",      actor: "agent",  dur: 4 },
+    { id: "signoff",     label: "owner sign-off on release",      actor: "human",  dur: 0 },
+  ];
+  const MILESTONES = [
+    { id: "bump-version",    actor: "det",   dur: 2 },
+    { id: "run-ci",          actor: "det",   dur: 3 },
+    { id: "draft-changelog", actor: "agent", dur: 5 },
+    { id: "publish-alpha",   actor: "agent", dur: 4 },
+    { id: "deploy-docs",     actor: "agent", dur: 6 },
+  ];
+  const ACTOR_NAME = { det: "step", agent: "subagent", sensor: "sensor", human: "gate" };
+
+  const S = {
+    t: 0, phase: "assess", playing: false, timer: null,
+    docsUp: true, vibes: false, regressed: false,
+    records: [],          // {kind, name, actor, started, dur, done, onDone}
+    crit: {},             // id -> pending | checking | pass | fail
+    msDone: new Set(),
+    visited: new Set(["assess"]),
+    approvedAt: null,
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const logEl = $("log"), recEl = $("records-list"), critEl = $("criteria-list");
+
+  // ---------- logging ----------
+  function log(html, cls = "") {
+    const ln = document.createElement("div");
+    ln.className = "ln " + cls;
+    ln.innerHTML = `<span class="t">t ${String(S.t).padStart(3, "0")}</span>` + html;
+    logEl.appendChild(ln);
+    while (logEl.children.length > 120) logEl.removeChild(logEl.firstChild);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+  const routed = (actor, name, evt, bad) =>
+    log(`<span class="src-${actor}">${ACTOR_NAME[actor]} ${name}</span>` +
+        `<span class="route"> ─ result(handleGoalEvent) → </span><span class="evt">${evt}</span>`,
+        bad ? "bad" : "");
+
+  // ---------- machine ----------
+  const EDGES = {
+    "assess>plan": "e-assess-plan", "plan>execute": "e-plan-execute",
+    "execute>verify": "e-execute-verify", "verify>review": "e-verify-review",
+    "review>done": "e-review-done", "assess>blocked": "e-assess-blocked",
+    "blocked>assess": "e-blocked-assess", "verify>repair": "e-verify-repair",
+    "repair>verify": "e-repair-verify", "review>repair": "e-review-repair",
+    "done>repair": "e-done-repair",
+  };
+  function transition(to, evt) {
+    const from = S.phase;
+    const edge = EDGES[`${from}>${to}`];
+    S.phase = to;
+    S.visited.add(to);
+    log(`<span class="evt">reduceGoal: ${from} → ${to}</span><span class="route">  (${evt})</span>`, "transition");
+    if (edge) {
+      const g = $(edge);
+      g.classList.add("fired");
+      setTimeout(() => g.classList.remove("fired"), 1400);
+    }
+    mountPhase(to);
+    render();
+  }
+
+  // ---------- records (SimHost.reconcile, hand-rolled) ----------
+  function mount(kind, name, actor, dur, onDone) {
+    S.records.push({ kind, name, actor, started: S.t, dur, done: false, onDone });
+  }
+  function clearPhaseRecords() {
+    S.records = S.records.filter((r) => r.kind === "sensor"); // provider-level sensor persists
+  }
+  function mountPhase(phase) {
+    clearPhaseRecords();
+    if (phase === "assess") {
+      mount("step", "assess:spec", "det", 2, () => {
+        if (S.vibes) {
+          routed("det", "assess:spec", "SPEC_UNVERIFIABLE", true);
+          transition("blocked", "SPEC_UNVERIFIABLE");
+        } else {
+          routed("det", "assess:spec", "SPEC_OK");
+          transition("plan", "SPEC_OK");
+        }
+      });
+    } else if (phase === "plan") {
+      mount("subagent", "planner:release", "agent", 4, () => {
+        routed("agent", "planner:release", "PLAN_READY");
+        transition("execute", "PLAN_READY");
+      });
+    } else if (phase === "execute") {
+      for (const m of MILESTONES) {
+        if (S.msDone.has(m.id)) continue;
+        mount(m.actor === "agent" ? "subagent" : "step", `worker:${m.id}`, m.actor, m.dur, () => {
+          S.msDone.add(m.id);
+          routed(m.actor, `worker:${m.id}`, `MILESTONE_DONE(${m.id})`);
+          if (m.id === "deploy-docs") S.docsUp = true;
+          if (S.msDone.size === MILESTONES.length) transition("verify", "ALL_MILESTONES_DONE");
+          else render();
+        });
+      }
+    } else if (phase === "verify") {
+      for (const c of CRITERIA) {
+        if (c.actor === "human" || S.crit[c.id] === "pass") continue;
+        S.crit[c.id] = "checking";
+        mount("check", `verify:${c.id}`, c.actor, c.dur, () => {
+          const ok = c.id !== "deployed" || S.docsUp;
+          S.crit[c.id] = ok ? "pass" : "fail";
+          routed(c.actor, `verify:${c.id}`, ok ? `CHECK_PASS(${c.id})` : `CHECK_FAIL(${c.id})`, !ok);
+          if (!ok) { transition("repair", "CHECK_FAIL"); return; }
+          const auto = CRITERIA.filter((x) => x.actor !== "human");
+          if (auto.every((x) => S.crit[x.id] === "pass")) transition("review", "ALL_CHECKS_PASS");
+          else render();
+        });
+      }
+    } else if (phase === "review") {
+      mount("gate", "review:owner", "human", Infinity, () => {});
+      $("gate-summary").textContent =
+        `${S.msDone.size}/${MILESTONES.length} milestones done · 4/4 automated checks green · ` +
+        (S.regressed ? "re-review after regression" : "diff: v0.6.0-alpha, CHANGELOG, docs-site");
+    } else if (phase === "repair") {
+      mount("subagent", "repair:incident", "agent", 4, () => {
+        S.docsUp = true;
+        for (const c of CRITERIA) if (S.crit[c.id] === "fail") S.crit[c.id] = "pending";
+        routed("agent", "repair:incident", "REPAIRED");
+        transition("verify", "REPAIRED");
+      });
+    }
+    // blocked and done mount nothing new; the sensor keeps ticking.
+  }
+
+  // ---------- tick loop (SimHost.tick) ----------
+  function tick() {
+    S.t += 1;
+    // sensor fires every 3 ticks once the goal is past deploy
+    if (S.t % 3 === 0 && !S.docsUp && (S.phase === "review" || S.phase === "done")) {
+      S.regressed = true;
+      S.crit.deployed = "fail";
+      if (S.phase === "done") S.crit.signoff = "pending";
+      log(`<span class="src-sensor">sensor uptime:docs</span><span class="route"> ─ onDown → </span><span class="evt">DEPLOY_DOWN</span>`, "bad");
+      transition("repair", "DEPLOY_DOWN");
+      return;
+    }
+    for (const r of [...S.records]) {
+      if (!r.done && r.dur !== Infinity && S.t - r.started >= r.dur) {
+        r.done = true;
+        r.onDone();
+      }
+    }
+    render();
+  }
+  function setPlaying(p) {
+    S.playing = p;
+    $("btn-play").textContent = p ? "❚❚ Pause" : "▶ Run";
+    clearInterval(S.timer);
+    if (p) S.timer = setInterval(tick, 620);
+  }
+
+  // ---------- render ----------
+  function render() {
+    $("t-chip").textContent = `t = ${String(S.t).padStart(3, "0")}`;
+    $("phase-val").textContent = S.phase;
+
+    // meters
+    const total = CRITERIA.length + (S.vibes ? 1 : 0);
+    const bound = CRITERIA.length;
+    const v = $("verif-chip");
+    v.className = "chip " + (S.vibes ? "crit" : "ok");
+    $("verif-val").textContent = `${bound}/${total}`;
+    const planned = S.visited.has("execute");
+    const a = $("achiev-chip");
+    a.className = "chip " + (S.phase === "blocked" ? "crit" : planned ? "ok" : "");
+    $("achiev-val").textContent = S.phase === "blocked" ? "—" : planned ? `${bound}/${bound} covered` : "awaiting plan";
+
+    // machine nodes
+    for (const n of ["assess", "plan", "execute", "verify", "review", "repair", "done", "blocked"]) {
+      const el = $("n-" + n);
+      el.classList.toggle("current", S.phase === n);
+      el.classList.toggle("visited", S.visited.has(n) && S.phase !== n);
+    }
+
+    // source highlight
+    document.querySelectorAll(".src-block").forEach((b) => {
+      const active = b.dataset.phase === S.phase;
+      if (active && !b.classList.contains("active")) {
+        b.classList.add("flash");
+        setTimeout(() => b.classList.remove("flash"), 500);
+      }
+      b.classList.toggle("active", active);
+    });
+
+    // records
+    recEl.innerHTML = "";
+    const sensorRow = { kind: "sensor", name: "uptime:docs", actor: "sensor", started: 0, dur: Infinity, done: false };
+    for (const r of [sensorRow, ...S.records.filter((x) => x.kind !== "sensor")]) {
+      const div = document.createElement("div");
+      div.className = "rec" + (r.done ? " done" : "");
+      const pct = r.dur === Infinity ? (r.kind === "gate" ? 100 : 100)
+        : Math.min(100, Math.round(((S.t - r.started) / r.dur) * 100));
+      const meta = r.dur === Infinity
+        ? (r.kind === "sensor" ? "every 3t" : "waiting on human")
+        : r.done ? "done" : `${S.t - r.started}/${r.dur}t`;
+      div.innerHTML =
+        `<span class="kind actor-${r.actor}">${ACTOR_NAME[r.actor]}</span>` +
+        `<span class="name">${r.name}</span>` +
+        (r.dur === Infinity ? "" : `<span class="bar"><i style="width:${r.done ? 100 : pct}%"></i></span>`) +
+        `<span class="meta">${meta}</span>`;
+      recEl.appendChild(div);
+    }
+
+    // criteria
+    critEl.innerHTML = "";
+    const rows = [...CRITERIA];
+    if (S.vibes) rows.push({ id: "vibes", label: '"users love it"', actor: null });
+    for (const c of rows) {
+      const st = c.id === "vibes" ? "none" : (S.crit[c.id] || "pending");
+      const div = document.createElement("div");
+      div.className = "crit-row " + st;
+      const mark = st === "pass" ? "✓" : st === "fail" ? "✕" : st === "checking" ? "◌" : "·";
+      const via = c.actor
+        ? `<span class="via actor-${c.actor}">${c.actor}</span>`
+        : `<span class="via via-none">no verifier</span>`;
+      div.innerHTML = `<span class="st">${mark}</span><span class="lbl">${c.label}</span>${via}`;
+      critEl.appendChild(div);
+    }
+
+    // cards
+    $("gate-card").classList.toggle("show", S.phase === "review");
+    $("blocked-card").classList.toggle("show", S.phase === "blocked");
+    $("done-card").classList.toggle("show", S.phase === "done");
+    if (S.phase === "done" && S.approvedAt !== null) {
+      $("done-summary").textContent =
+        `All 5 criteria verified at t=${S.approvedAt}` + (S.regressed ? " (after 1 regression repair)." : ".");
+    }
+
+    // chaos availability: only once something is deployed to break
+    $("btn-chaos").disabled = !(S.docsUp && (S.phase === "verify" || S.phase === "review" || S.phase === "done"));
+  }
+
+  // ---------- controls ----------
+  $("btn-play").addEventListener("click", () => setPlaying(!S.playing));
+  $("btn-step").addEventListener("click", () => { setPlaying(false); tick(); });
+  $("btn-reset").addEventListener("click", () => {
+    setPlaying(false);
+    Object.assign(S, {
+      t: 0, phase: "assess", docsUp: true, regressed: false,
+      records: [], crit: {}, msDone: new Set(),
+      visited: new Set(["assess"]), approvedAt: null,
+    });
+    logEl.innerHTML = "";
+    log(`<span class="route">goal ship-v0.6 mounted · press Run</span>`);
+    mountPhase("assess");
+    render();
+  });
+  $("btn-chaos").addEventListener("click", () => {
+    S.docsUp = false;
+    log(`<span class="route">world: docs-site now returns 500 — nothing happens until a sensor or check notices</span>`, "bad");
+    render();
+  });
+  $("btn-approve").addEventListener("click", () => {
+    S.crit.signoff = "pass";
+    S.approvedAt = S.t;
+    routed("human", "review:owner", "APPROVED");
+    transition("done", "APPROVED");
+  });
+  $("btn-reject").addEventListener("click", () => {
+    S.crit.changelog = "pending";
+    S.regressed = true;
+    routed("human", "review:owner", "CHANGES_REQUESTED", true);
+    transition("repair", "CHANGES_REQUESTED");
+  });
+  $("vibes-toggle").addEventListener("change", (e) => {
+    S.vibes = e.target.checked;
+    if (S.phase === "blocked" && !S.vibes) {
+      log(`<span class="route">spec edited: unverifiable criterion removed</span>`);
+      transition("assess", "SPEC_FIXED");
+    } else if (S.phase === "assess") {
+      // re-arm the assess step so the change is actually re-assessed
+      S.records = S.records.filter((r) => r.name !== "assess:spec");
+      mountPhase("assess");
+      render();
+    } else {
+      log(`<span class="route">spec change queued — takes effect on Reset (durable goals don't hot-swap their spec)</span>`);
+    }
+  });
+
+  // ---------- boot ----------
+  log(`<span class="route">goal ship-v0.6 mounted · press Run</span>`);
+  mountPhase("assess");
+  render();
+})();
+</script>
