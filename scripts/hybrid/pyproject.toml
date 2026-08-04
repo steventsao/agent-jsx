@@ -1,0 +1,15 @@
+[project]
+name = "agent-jsx-hybrid-ocr"
+version = "0.1.0"
+description = "Hybrid OCR engines (layout detection + text recognition) for the agent-jsx Phase A/B reproduction"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+  "doclayout-yolo==0.0.4",
+  "huggingface-hub>=0.24",
+  "pillow>=10.0",
+  "pypdfium2>=4.30",
+  "rapidocr-onnxruntime==1.4.4",
+]
+
+[tool.uv]
+package = false
