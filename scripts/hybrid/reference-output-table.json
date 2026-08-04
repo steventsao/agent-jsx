@@ -1,0 +1,199 @@
+{
+  "segments": [
+    {
+      "bbox": {
+        "x0": 0.116,
+        "x1": 0.882,
+        "y0": 0.0826,
+        "y1": 0.1196
+      },
+      "id": "r0",
+      "tag": "text",
+      "text": "Table 7:Amulti-dimensional comparison of representativeworksinMatryoshkaRepresentationLearning(MRL).Theprinciple ofnested,adaptablerepresentationshasbeenextendedfromembeddingdimensionstomodeldepth,token counts,andeven quantizationbit-widths,addressingawiderangeoftasksfromefficientretrievaltomodelinterpretability."
+    },
+    {
+      "bbox": {
+        "x0": 0.1319,
+        "x1": 0.866,
+        "y0": 0.1298,
+        "y1": 0.2336
+      },
+      "id": "r1",
+      "rows": [
+        [
+          "Representative Works",
+          "Modality",
+          "Target Task",
+          "Matryoshka On",
+          "CoreInnovation"
+        ],
+        [
+          "MRL(Kusupati et al.,2022)",
+          "Text/Vision",
+          "Classification/Retrieval",
+          "Embedding Dimension",
+          "Foundational concept of nested embeddings."
+        ],
+        [
+          "2DMSE（Lietal.,2024c)",
+          "",
+          "STS/Retrieval",
+          "Embedding Dimension & Model Depth",
+          "Extends MRL. to two dimensions for greater flexibility."
+        ],
+        [
+          "Starbucks (Zhuang et al.,2024)",
+          "Text",
+          "STS / Retrieval",
+          "Embedding Dimension & Model Depth",
+          "Improves 2DMSE to match individually trained models."
+        ],
+        [
+          "MatTA(Verma ctal.,2025)",
+          "Generic",
+          "General Tasks",
+          "Model Depth & Width (FFN)",
+          "Teacher-TA-Student distillation for elastic student models."
+        ],
+        [
+          "M3 (Caiet al.,2024)/MQT (Hu etal.,2024)",
+          "Multimodal",
+          "VQA / Reasoning",
+          "Number of Visual Tokens",
+          "Enables adaptive visual granularity in LVLMs."
+        ],
+        [
+          "Matryoshka Re-Ranker (Liu ct al.,2025g)",
+          "Text",
+          "Re-ranking",
+          "Model Depth & Sequence Length",
+          "Creates flexible re-rankers with configurable architecture."
+        ],
+        [
+          "SMEC(Zhangetal.,2025a)",
+          "Text / Vision",
+          "Retrieval/ Classification",
+          "Embedding Dimension",
+          "Sequential training to mitigate gradient variance."
+        ],
+        [
+          "Matryoshka-Adaptor (Yoon ct al., 2024)",
+          "Text/Multimodal",
+          "Retrieval",
+          "Embedding Dimension",
+          "Post-hoc tuning to impart Matryoshka properties."
+        ],
+        [
+          "MatMamba(Shukla etal.,2024)",
+          "Language / Vision",
+          "LM/ Classification",
+          "Hidden Dimension & Heads",
+          "Generalizes MRL to State Space Model (SSM) architectures."
+        ],
+        [
+          "Matryoshka SAE(Bussmann ct al.,2025)",
+          "Model Activations",
+          "Interpretability",
+          "SAE Dictionary Size",
+          "Mitigates feature splitting in Sparse Autoencoders."
+        ],
+        [
+          "Matryoshka Quantization (Nair et al., 2025)",
+          "Model Weights",
+          "Model Compression",
+          "Quantization Bit-width",
+          "Leverages nested structure of integer data types."
+        ]
+      ],
+      "tag": "table"
+    },
+    {
+      "bbox": {
+        "x0": 0.512,
+        "x1": 0.883,
+        "y0": 0.2585,
+        "y1": 0.353
+      },
+      "id": "r2",
+      "tag": "text",
+      "text": "the training paradigm itself, such as the sequen- (Zhang et al.,2025a)a tiallearninginSMEC and thepost-hoctuningofMatryoshka-Adaptor(Yoon et al.,2024),are making the creation of these flexi- ble embeddings more efficient and accessible. We compare theworks aboveinTable7."
+    },
+    {
+      "bbox": {
+        "x0": 0.1172,
+        "x1": 0.4876,
+        "y0": 0.2586,
+        "y1": 0.5004
+      },
+      "id": "r3",
+      "tag": "text",
+      "text": "KaLM-Embedding-V2(Zha0 et al.,2025),Embed- dingGemma(Vera et al.,2025),jina-embeddings v3 (Sturua et al.,2024),jina-colbert-v2(Jha et al. 2024))acrossdiversereal-world tasks(Laiet al. 2024;Wang et al.,2024c;Nacar and Koubaa,2025; Hanley and Durumeric,2025;Fuet al.,2025).For- mally,given an encoder &,a document page dis mapped to a full embedding ed = &(d) E RD MRLtrainsthemodelonasetofnesteddimensions M ={m1,m2,...,mk}where m1<m2< [mi] ERmi ..< mk =D,such that each prefix xed (thefirstmicomponents of ed)is avalid repre sentation.Thetraining objectiveLMRLsums a standardrepresentationlossE(,·)overallnested dimensions:"
+    },
+    {
+      "bbox": {
+        "x0": 0.5134,
+        "x1": 0.7882,
+        "y0": 0.3683,
+        "y1": 0.3829
+      },
+      "id": "r4",
+      "tag": "text",
+      "text": "TowardsInteractiveRetrieval F.4"
+    },
+    {
+      "bbox": {
+        "x0": 0.5118,
+        "x1": 0.8826,
+        "y0": 0.3909,
+        "y1": 0.8238
+      },
+      "id": "r5",
+      "tag": "text",
+      "text": "Integrating VDR with agentic systems holds im mensepotential,particularlyfor complexscenarios likeDeepResearch,whereaqueryrequiresitera tiveevidencegatheringfromavastcandidatepool (Java et al.,2025;Chen et al., 2025e; Huang et al. 2025b;Zhang et al.,2025f).The current challenge however,is that most agentic systems treatVDR modelsaspassive,reactivetoolsrather than active strategicpartners.Theseagentstypicallyoperate within a predefined, reactive loop of reasoning and acting,whichlimits their abilitytodynamicallyfor mulateoradaptahigh-levelretrievalstrategy.For instance,whileframeworkslikeWebThinker(Li et al.,2025f) and DeepResearcher (Zheng et al. 2025b）enableagents tointerleavethoughtwith websearch actions,they oftenfunction as sophis ticatedtool-executorsthatreactivelyprocessin formationratherthanasresearchstrategiststhat proactivelyplan amulti-stepinformation-seeking campaign. This limitation becomes particularly ev ident in complex research tasks, such as generating structuredreportswithdynamic outlines as demon- stratedbyWebWeaver(Lietal.,2025j)orcreat ingtext-chartinterleavedcontentasinMultimodal DeepResearcher (Yang et al.,2025b),where the retrieval processitselfmustbestrategicallyguided togatherdiverseandstructuredevidence."
+    },
+    {
+      "bbox": {
+        "x0": 0.1162,
+        "x1": 0.485,
+        "y0": 0.5173,
+        "y1": 0.5546
+      },
+      "id": "r6",
+      "tag": "text",
+      "text": "E(d+)(mi]) (E(g)(mi], LMRL(q,d+) Wi·l = miEM"
+    },
+    {
+      "bbox": {
+        "x0": 0.4544,
+        "x1": 0.4861,
+        "y0": 0.5531,
+        "y1": 0.5674
+      },
+      "id": "r7",
+      "tag": "text",
+      "text": "11"
+    },
+    {
+      "bbox": {
+        "x0": 0.1166,
+        "x1": 0.4875,
+        "y0": 0.5683,
+        "y1": 0.9217
+      },
+      "id": "r8",
+      "tag": "text",
+      "text": "where qis a query,d+is apositive document,and w are loss weights.This allows practitioners to truncatestoredembeddingsatinferencetime,pro- vidingaflexibledialtobalanceperformance and efficiency. Building on this, 2DMSE (Li et al. 2024c)extendsthiselasticitytomodeldepth,while frameworks like Starbucks(Zhuang et al.,2024) andMatTA(Vermaet al.,2025)refine thetraining processtobridgetheperformancegapwithindi- vidually trained models. The Matryoshka principle has alsobeen generalized to newgranularities and architectures:M3(Cai et al.,2024) and MQT(Hu et al.,2024)applyit to the number of visual to kens in LVLMs; Matryoshka Re-Ranker (Liu et al. 2025g)enables fexible depth and sequence length for re-ranking; and MatMamba(Shuklaet al.,2024) integrates it intoStateSpace Models.The applica- tionofMRLhasfurtherexpandedtodiversetasks such as improving feature hierarchy in Sparse Au- toencoders (Bussmann et al., 2025) and enabling multi-precisionmodelsviaMatryoshkaQuantiza tion (Nair et al.,2025).Finally,innovations in"
+    },
+    {
+      "bbox": {
+        "x0": 0.5116,
+        "x1": 0.8833,
+        "y0": 0.8267,
+        "y1": 0.9219
+      },
+      "id": "r9",
+      "tag": "text",
+      "text": "focusontheco-designof Futurework mustf agentsandVDRtoolstofoster amoreorganic andstrategic synergy.Aprimary d directionisto empower agents with explicit retrieval planning capabilities,enabling them to decompose a high- levelqueryintoamulti-step,multi-granularityre"
+    }
+  ]
+}

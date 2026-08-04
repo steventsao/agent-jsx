@@ -12,6 +12,12 @@
  *            the layout stage of MinerU (arXiv 2409.18839).
  *   ocr    : RapidOCR 1.4.4 (PP-OCRv4 det+cls+rec, ONNXRuntime CPU) —
  *            arXiv 2009.09941.
+ *   table  : RapidTable 3.0.2 / SLANet-plus (PP-Structure, ONNXRuntime CPU) —
+ *            arXiv 2210.05391, SLANet lineage surveyed in arXiv 2507.05595.
+ *
+ * The table engine is a THIRD capability of exactly the same shape as `ocr`:
+ * crop in, structured value out, one short-lived process. Adding it did not
+ * change how any existing capability is called.
  *
  * WHY SHELL OUT INSTEAD OF PORTING THE PIXEL MATH TO TS: the experiment asks
  * whether the *composition grammar* reproduces the *hand-written pipeline*.
@@ -68,6 +74,8 @@ export interface HybridEngines {
   crop: (page: string, bbox: Bbox) => string;
   /** crop (base64 PNG) -> recognized text. */
   ocr: (crop: string) => string;
+  /** crop (base64 PNG) -> a rectangular grid of cell strings (engines.py D7). */
+  table: (crop: string) => string[][];
 }
 
 // ---------------------------------------------------------------------------
@@ -111,24 +119,46 @@ export const sha256OfB64 = (b64: string): string =>
 
 // ---------------------------------------------------------------------------
 
+export interface RenderedPage {
+  page: string;
+  sha256: string;
+  width: number;
+  height: number;
+}
+
+/** Render page 1 of a PDF at the pinned DPI, as base64 — the page bytes the
+ *  composition holds in state and never hands to a child. */
+function renderPdf(pdfPath: string): RenderedPage {
+  const out = tmpPath(".png");
+  const info = py<{ sha256: string; width: number; height: number }>([
+    "render-page",
+    pdfPath,
+    out,
+  ]);
+  return { page: readB64(out), sha256: info.sha256, width: info.width, height: info.height };
+}
+
 /**
- * Render page 1 of the repo's committed ParseBench sample to a PNG at the
- * pinned DPI, returned as base64 — the page bytes the composition holds in
- * state and never hands to a child.
+ * The repo's committed ParseBench sample (arXiv 2602.19961v1 p1) — 12 text
+ * regions and a figure, NO table.
  *
  * The base64 PDF is pulled through the repo's own fixture module, NOT through
  * scripts/hybrid/sample_pdf.py, so the two paths reach the renderer
  * independently. They must still produce the same page sha256.
  */
-export function renderSamplePage(): { page: string; sha256: string; width: number; height: number } {
-  const pdf = writeB64(SAMPLE_PDF_B64, ".pdf");
-  const out = tmpPath(".png");
-  const info = py<{ sha256: string; width: number; height: number }>([
-    "render-page",
-    pdf,
-    out,
-  ]);
-  return { page: readB64(out), sha256: info.sha256, width: info.width, height: info.height };
+export function renderSamplePage(): RenderedPage {
+  return renderPdf(writeB64(SAMPLE_PDF_B64, ".pdf"));
+}
+
+/** Page 32 of the SAME arXiv paper, which carries a real table (9 text
+ *  regions + 1 table, no figure).
+ *
+ *  Unlike the sample page there is no second decode path here: both phases
+ *  open the same committed one-page PDF. The page sha256 is still asserted
+ *  against the oracle's, so identical input pixels remain PROVEN rather than
+ *  assumed — what is not additionally exercised is the base64-fixture decode. */
+export function renderTablePage(): RenderedPage {
+  return renderPdf(join(HYBRID_DIR, "fixtures", "table-page.pdf"));
 }
 
 export function createHybridEngines(): HybridEngines {
@@ -144,6 +174,7 @@ export function createHybridEngines(): HybridEngines {
       return readB64(out);
     },
     ocr: (crop) => py<{ text: string }>(["ocr", writeB64(crop, ".png")]).text,
+    table: (crop) => py<{ rows: string[][] }>(["table", writeB64(crop, ".png")]).rows,
   };
 }
 
