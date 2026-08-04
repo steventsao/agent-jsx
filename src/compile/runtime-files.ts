@@ -25,6 +25,9 @@ import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 /** relative-to-this-module source path → dest path under the runtime dir. */
 const RUNTIME_FILES: ReadonlyArray<readonly [src: string, dest: string]> = [
   ["../tree.ts", "tree.ts"],
+  // the goal layer: pure table + reducer; its one import (`./tree.ts` for the
+  // CollectedPhase type) resolves identically inside the copied set
+  ["../goal.ts", "goal.ts"],
   ["../store.ts", "store.ts"],
   ["../prompt.ts", "prompt.ts"],
   ["../types.ts", "types.ts"],

@@ -11,6 +11,7 @@
  */
 
 import type {
+  PhaseProps,
   ScheduleProps,
   SensorProps,
   SubagentProps,
@@ -65,6 +66,10 @@ export namespace JSX {
     subagent: SubagentProps & IntrinsicAttributes;
     tool: ToolProps & IntrinsicAttributes;
     task: TaskProps & IntrinsicAttributes;
+    // Goal declaration: reconciles to no record (see src/tree.ts collectPhases).
+    // `children` is re-widened to unknown — this runtime builds DataElements,
+    // not react nodes, exactly like prompt/sys/msg below.
+    phase: Omit<PhaseProps, "children"> & { children?: unknown } & IntrinsicAttributes;
     prompt: { children?: unknown } & IntrinsicAttributes;
     sys: { p?: number; prel?: number; children?: unknown } & IntrinsicAttributes;
     msg: { p?: number; prel?: number; children?: unknown } & IntrinsicAttributes;
