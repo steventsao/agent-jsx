@@ -2,6 +2,11 @@
 
 **STATUS: COMPLETE (2026-07-07).** Phase A live at agent-jsx-pdf.steventsao.workers.dev; Phase B live at agent-jsx-pdf-compiled.steventsao.workers.dev; live `/result` payloads diff-equal to each other AND to the golden oracle (`COMPILED === HAND-WRITTEN === GOLDEN`). Divergences: COMPAT-REPORT #25–#32.
 
+> **2026-08-04:** the hand-written Phase A package (`compat/flue` pdf target + `compat/pdf-target`)
+> was removed from the tree after the equality theorem was proven — scaffolding, not regression
+> value. `compat/pdf-compiled` stays as the living suite; the golden oracle and both live deploys
+> are untouched. This doc remains as the record of how Phase A was built.
+
 The goal (verbatim intent): given a PDF, a parent agent does layout parsing; for
 each bbox, the PDF + bbox go to a child that extracts the text layer within it —
 on a ParseBench sample. Write the TARGET FORMAT by hand first (flue shape + a
