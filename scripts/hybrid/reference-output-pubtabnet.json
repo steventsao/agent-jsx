@@ -1,0 +1,142 @@
+{
+  "segments": [
+    {
+      "bbox": {
+        "x0": 0.047,
+        "x1": 0.9839,
+        "y0": 0.0,
+        "y1": 0.9986
+      },
+      "id": "r0",
+      "rows": [
+        [
+          "Questions",
+          "",
+          "Response Frequency(n=25i)Percee",
+          ""
+        ],
+        [
+          "Narcotics on a regular schedule is preferred over PRN* schedule for continuous pain",
+          "Yes",
+          "162",
+          "64.5"
+        ],
+        [
+          "Narcotics on a regular schedule is preferred over PRN* schedule for continuous pain",
+          "No",
+          "89",
+          "35.5"
+        ],
+        [
+          "Accurate judige of the intensity of the patient's pain s the patient",
+          "Yes",
+          "196",
+          "78.1"
+        ],
+        [
+          "Accurate judige of the intensity of the patient's pain s the patient",
+          "No",
+          "55",
+          "21.9"
+        ],
+        [
+          "Distraction by use of music or relaxation decrease feeling of pain",
+          "Yes",
+          "179",
+          "71.3"
+        ],
+        [
+          "Distraction by use of music or relaxation decrease feeling of pain",
+          "No",
+          "",
+          "28.6"
+        ],
+        [
+          "Increasing narcotic analgesic requirement are signs, patient is.becoming addicted",
+          "Yes",
+          "195",
+          "77.7."
+        ],
+        [
+          "Increasing narcotic analgesic requirement are signs, patient is.becoming addicted",
+          "No",
+          "95",
+          "22.3"
+        ],
+        [
+          "Severe chronic pain often.need higher dosages of pain medications.than acute pain",
+          "Yes",
+          "",
+          "68.9"
+        ],
+        [
+          "Severe chronic pain often.need higher dosages of pain medications.than acute pain",
+          "No",
+          "B",
+          "31.1"
+        ],
+        [
+          "Narcotics for pediatric patients can cause respiratory depression",
+          "Yes",
+          "138",
+          "055"
+        ],
+        [
+          "Narcotics for pediatric patients can cause respiratory depression",
+          "No",
+          "113",
+          "054"
+        ],
+        [
+          "Analgesics for chronic joint pain cases as needed",
+          "Yes",
+          "227",
+          "90.4"
+        ],
+        [
+          "Analgesics for chronic joint pain cases as needed",
+          "No",
+          "24",
+          "9.6"
+        ],
+        [
+          "Analgesic for cancer pani patienits as needed",
+          "Yes",
+          "176",
+          "70.1"
+        ],
+        [
+          "Analgesic for cancer pani patienits as needed",
+          "No",
+          "5c",
+          ""
+        ],
+        [
+          "Reports of patient/family, narcotic causing euphoria, should be given a lower dose of the",
+          "Yes",
+          "182",
+          "72.5"
+        ],
+        [
+          "Reports of patient/family, narcotic causing euphoria, should be given a lower dose of the",
+          "No",
+          "69",
+          ""
+        ],
+        [
+          "Do children need better attention for managing their pain?",
+          "Yes",
+          "",
+          "84.5"
+        ],
+        [
+          "Do children need better attention for managing their pain?",
+          "No",
+          "6E",
+          "15.5"
+        ]
+      ],
+      "tag": "table"
+    }
+  ]
+}

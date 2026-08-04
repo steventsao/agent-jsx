@@ -59,13 +59,20 @@ Determinism rules (the equality bar depends on all of these):
           whitespace-collapsed by the same `_WS` rule as D6
       No float, no sort, no tolerance enters this path: the mapping is total
       and order-free, so it cannot disagree between the two phases.
+      The `table` subcommand also returns the mapping's INPUTS (`spans` and
+      `cells`, pre-placement) so the repetition can be verified instead of
+      trusted; they are provenance only and never enter the equality object.
+      Exercised by a real golden: fixtures/pubtabnet-PMC5343394_003_00.png
+      carries 10 rowspan=2 merges that the model recovers.
 
 Subcommands (all JSON on stdout):
   render-page <pdf> <out.png> [--dpi N]   -> {"path","width","height","dpi"}
   layout      <page.png>                  -> {"regions":[{id,tag,bbox,score}]}
   crop        <page.png> <out.png> --bbox x0,y0,x1,y1 -> {"path","box",...}
   ocr         <crop.png>                  -> {"text"}
-  table       <crop.png>                  -> {"rows": [[cell, ...], ...]}
+  table       <crop.png>                  -> {"rows": [[cell, ...], ...],
+                                              "spans": [[r0,r1,c0,c1], ...],
+                                              "cells": [cell, ...]}
   version                                 -> {"models": {...}}
 """
 
@@ -326,7 +333,7 @@ _WS = re.compile(r"\s+")
 
 
 def _ocr_raw(crop_png: str) -> list:
-    """The ONE RapidOCR invocation. `recognize` (text regions) and `table_rows`
+    """The ONE RapidOCR invocation. `recognize` (text regions) and `table_cells`
     (table cells) both go through here, so a table's cell text and a paragraph's
     text are produced by the same recognizer on the same terms."""
     _seed()
@@ -391,13 +398,27 @@ def _cell_text(raw: str) -> str:
     return _WS.sub(" ", htmllib.unescape(_TAG.sub("", raw))).strip()
 
 
-def table_rows(crop_png: str) -> list[list[str]]:
-    """SLANet structure + RapidOCR text -> a rectangular grid of cell strings.
+def table_cells(crop_png: str) -> dict:
+    """SLANet structure + RapidOCR text -> the D7 mapping, with its inputs.
 
-    See D7 in the module docstring for the mapping rule. Returns [] for a crop
-    the model finds no cells in — an empty table is a completed region, not an
-    error, exactly as an empty recognition is for a text region.
+    Returns {"rows", "spans", "cells"} where `rows` is the rectangular grid of
+    cell strings (the only part that reaches the equality object), and
+    `spans`/`cells` are the model's OWN pre-placement output: the Nth entry of
+    `cells` is the text of the Nth `<td>`, and the Nth entry of `spans` is its
+    grid rectangle [row_start, row_end, col_start, col_end], inclusive.
+
+    `spans`/`cells` exist so the span-repetition half of D7 can be CHECKED
+    rather than trusted. Given them, `rows[r][c] == cells[i]` must hold for
+    every (r, c) inside spans[i] — a property tests/hybrid-repro.test.tsx
+    asserts against the committed provenance. They are recorded in
+    reference-meta*.json, never in reference-output*.json: they are evidence
+    about the mapping, not part of what the two phases must agree on.
+
+    See D7 in the module docstring for the mapping rule. Returns empty lists
+    for a crop the model finds no cells in — an empty table is a completed
+    region, not an error, exactly as an empty recognition is for a text region.
     """
+    empty: dict = {"rows": [], "spans": [], "cells": []}
     ocr_result = _ocr_raw(crop_png)
     boxes = [line[0] for line in ocr_result]
     texts = tuple(line[1] for line in ocr_result)
@@ -409,10 +430,10 @@ def table_rows(crop_png: str) -> list[list[str]]:
     htmls = getattr(out, "pred_htmls", None) or []
     points = getattr(out, "logic_points", None) or []
     if not htmls or len(points) == 0:
-        return []
+        return empty
 
     cells = [_cell_text(m) for m in _TD.findall(htmls[0])]
-    spans = [tuple(int(v) for v in p) for p in points[0]]
+    spans = [[int(v) for v in p] for p in points[0]]
 
     # D7 — both come from the same token stream; if that ever stops being true
     # we must NOT guess an alignment. Fail loudly instead.
@@ -422,7 +443,7 @@ def table_rows(crop_png: str) -> list[list[str]]:
             "structure/HTML alignment broke, refusing to guess a mapping"
         )
     if not spans:
-        return []
+        return empty
 
     n_rows = max(s[1] for s in spans) + 1
     n_cols = max(s[3] for s in spans) + 1
@@ -431,11 +452,14 @@ def table_rows(crop_png: str) -> list[list[str]]:
         for r in range(r0, r1 + 1):
             for c in range(c0, c1 + 1):
                 grid[r][c] = text
-    return grid
+    return {"rows": grid, "spans": spans, "cells": cells}
 
 
 def cmd_table(args: argparse.Namespace) -> None:
-    _emit({"rows": table_rows(args.crop)})
+    # `rows` is what the composition consumes; `spans`/`cells` ride along as
+    # provenance and are ignored by examples/hybrid/engines.ts, so adding them
+    # cannot move reference-output*.json.
+    _emit(table_cells(args.crop))
 
 
 # ---------------------------------------------------------------------------

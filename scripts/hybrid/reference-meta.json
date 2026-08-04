@@ -123,5 +123,6 @@
       1754
     ]
   },
-  "source": "fixtures/pdf/sample-pdf.ts (ParseBench 2602.19961v1_p1.pdf, arXiv p1)"
+  "source": "fixtures/pdf/sample-pdf.ts (ParseBench 2602.19961v1_p1.pdf, arXiv p1)",
+  "tables": {}
 }
