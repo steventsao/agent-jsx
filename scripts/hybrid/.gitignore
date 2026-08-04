@@ -1,0 +1,4 @@
+# uv-managed venv (recreate with: uv venv --python 3.12 .venv && uv pip install -r pyproject.toml)
+.venv/
+.work/
+__pycache__/

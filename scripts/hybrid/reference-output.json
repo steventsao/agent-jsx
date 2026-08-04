@@ -1,0 +1,136 @@
+{
+  "segments": [
+    {
+      "bbox": {
+        "x0": 0.1166,
+        "x1": 0.8822,
+        "y0": 0.0908,
+        "y1": 0.1301
+      },
+      "id": "r0",
+      "tag": "text",
+      "text": "Unlocking Multimodal Document Intelligence: From Current Triumphs toFuture Frontiers ofVisual Document Retrieval"
+    },
+    {
+      "bbox": {
+        "x0": 0.1163,
+        "x1": 0.8826,
+        "y0": 0.1439,
+        "y1": 0.2452
+      },
+      "id": "r1",
+      "tag": "text",
+      "text": "Yibo Yan1.2,3, Jiahao Huo1.2,4, Guanbo Feng', Mingdong Ou2,*,Yi Cao² g Liu1.3, Yuanhuiyi Lyu1.3, Yu Huang1,2, Jungang Xin Zou13,Shuliang Li,Kening Zheng* Xu Zheng1,3, Philip S. Yu4, James Kwok3, Xuming Hu1,3,↑ y (Guangzhou), ²Alibaba Cloud Computing, gUniversityofScienceandTechnology Hong Kong University of Science and Technology, 4University of Illinois Chicago 3HongKong yanyibo70@gmail.com,xuminghu@hkust-gz.edu.cn"
+    },
+    {
+      "bbox": {
+        "x0": 0.1173,
+        "x1": 0.8806,
+        "y0": 0.1443,
+        "y1": 0.1949
+      },
+      "id": "r2",
+      "tag": "text",
+      "text": ", Jiahao Huo1.2,4, Guanbo Feng', Mingdong Ou2,*, Yi Cao², YiboYan1,2,3 Xin Zou1,3, Shuliang Liu1,3, Yuanhuiyi Lyu1.3, Yu Huang1,2, Jungang I Li,KeningZheng Philip S. Yu4, James Kwok3, Xuming Hu1,3,t XuZheng1,3,E"
+    },
+    {
+      "bbox": {
+        "x0": 0.1189,
+        "x1": 0.8814,
+        "y0": 0.196,
+        "y1": 0.2451
+      },
+      "id": "r3",
+      "tag": "text",
+      "text": "Hong Kong University of Science and Technology (Guangzhou), 2Alibaba Cloud Computing, 3Hong Kong University of Science and Technology, 4University of Illinois Chicago yanyibo70@gmail.com,xuminghu@hkust-gz.edu.cn"
+    },
+    {
+      "bbox": {
+        "x0": 0.263,
+        "x1": 0.3394,
+        "y0": 0.2627,
+        "y1": 0.2772
+      },
+      "id": "r5",
+      "tag": "text",
+      "text": "bstract"
+    },
+    {
+      "bbox": {
+        "x0": 0.1428,
+        "x1": 0.4594,
+        "y0": 0.2846,
+        "y1": 0.6246
+      },
+      "id": "r6",
+      "tag": "text",
+      "text": "Withtherapidproliferationofmultimodalin- formation,VisualDocumentRetrieval(VDR) hasemerged asacriticalfrontierinbridging thegapbetweenunstructuredvisuallyrichdata andpreciseinformationacquisition.Unlike traditionalnaturalimageretrieval,visualdoc- umentsexhibituniquecharacteristicsdefined by densetextualcontent,intricatelayouts,and fine-grainedsemanticdependencies.Thispa- perpresentsthefirstcomprehensivesurvey oftheVDRlandscape,specificallythrough thelensoftheMultimodalLargeLanguage Model(MLLM)era.Webeginbyexamin ingthebenchmarklandscape,andsubsequently diveintothemethodologicalevolution,cat- egorizingapproachesintothreeprimaryas- pects:multimodalembeddingmodels,multi- modalrerankermodels,andtheintegrationof Retrieval-AugmentedGeneration(RAG)and Agenticsystemsforcomplexdocumentintel- ligence.Finally,weidentifypersistentchal- lengesandoutlinepromisingfuturedirections aimingtoprovideaclearroadmapforfuture multimodaldocumentintelligence."
+    },
+    {
+      "bbox": {
+        "x0": 0.5119,
+        "x1": 0.8816,
+        "y0": 0.3794,
+        "y1": 0.4041
+      },
+      "id": "r7",
+      "tag": "text",
+      "text": "Figure1:Comparison of retrieval of naturalimage (left)and (right),the focus of this survey. visualdocument"
+    },
+    {
+      "bbox": {
+        "x0": 0.5122,
+        "x1": 0.8819,
+        "y0": 0.4123,
+        "y1": 0.4906
+      },
+      "id": "r8",
+      "tag": "text",
+      "text": "These documents, ranging from scanned PDFs and businessreportstoinvoices and academicp papers arecharacterizedbyadenseinterplayof textual graphicalelements content,complexlayouts,andg (Tang et al., 2023; Li et al., 2024d)."
+    },
+    {
+      "bbox": {
+        "x0": 0.5118,
+        "x1": 0.8821,
+        "y0": 0.4925,
+        "y1": 0.8466
+      },
+      "id": "r9",
+      "tag": "text",
+      "text": "ThepivottowardsVisualDocumentRetrieval (VDR)isdrivenbythreefundamentaldifferences thatdistinguishvisualdocumentsfromnatural images,asillustrated inFigure1.①Informa tion modality and density:unlikenaturalimages whichconvey semanticmeaningthroughholistic scenes,visualdocumentsarehybridentitieswhere meaningisco-determinedbyrichtextualinforma tion and astructuredspatiallayout.Theinforma tionis dense,hierarchical,and multi-modalbyna ture.②Semanticgranularity:retrievalinnatu a catsittingonasofa\"),whereasVDRdemands a muchfiner-grainedunderstanding.Users may queryforspecificfactsembeddedwithina table,a particular sentence in a paragraph, or information contingent on its document-level position (e.g., \"the methodologysectionofapaper\").③Userintent andtaskcomplexity:VDRistypicallygeared towardspreciseinformation-seeking,questionan swering,andevidence-basedreasoning,ratherthan conceptualoraestheticmatching."
+    },
+    {
+      "bbox": {
+        "x0": 0.1179,
+        "x1": 0.2572,
+        "y0": 0.6324,
+        "y1": 0.6475
+      },
+      "id": "r10",
+      "tag": "text",
+      "text": "Introduction 1"
+    },
+    {
+      "bbox": {
+        "x0": 0.1172,
+        "x1": 0.4869,
+        "y0": 0.6569,
+        "y1": 0.8643
+      },
+      "id": "r11",
+      "tag": "text",
+      "text": "Multimodalretrieval,thetaskofretrievingrelevant multimodalinformationfromalarge-scalecollec tionusingqueriesthatspanmultiplemodalitieslike textandvision,hasbecomeacornerstoneofmod ern information retrieval(Meiet al.,2025;Zheng et al.,2025a).Historically,research in this domain haspredominantlyfocusedonnaturalimagere trieval,targetingdatasetsofphotographsandweb imageswhere theprimarygoal is tomatchobjects scenes,orholisticvisualconcepts(Wuet al.,2024a Arslanetal.,2024).However,bothacademia andindustrybegintoturn their attentiontoa dis tinctyetubiquitousdatatype:visualdocuments"
+    },
+    {
+      "bbox": {
+        "x0": 0.5121,
+        "x1": 0.882,
+        "y0": 0.8492,
+        "y1": 0.8958
+      },
+      "id": "r12",
+      "tag": "text",
+      "text": "Furthermore, as the general capabilities of Multi- modal Large Language Models (MLLMs) advance (Song 2025b,a),the etal., 2025;Yan et al., eVDR"
+    }
+  ]
+}
