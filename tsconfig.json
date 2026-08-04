@@ -27,6 +27,7 @@
   "exclude": [
     "examples/generated",
     "examples/chess/generated",
+    "examples/chess-goal/generated",
     "compat"
   ]
 }
