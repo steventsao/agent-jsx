@@ -1,4 +1,5 @@
 import type {
+  PhaseProps,
   TaskProps,
   ScheduleProps,
   ScopeProps,
@@ -17,6 +18,9 @@ declare module "react" {
       subagent: SubagentProps & Attributes;
       tool: ToolProps & Attributes;
       task: TaskProps & Attributes;
+      // Goal: a declared phase of a long-horizon machine. Reconciles to no
+      // record; swept into the transition graph by collectPhases.
+      phase: PhaseProps & Attributes;
       // Context: assembled under a token budget with priompt semantics
       prompt: { children?: ReactNode } & Attributes;
       sys: { p?: number; prel?: number; children?: ReactNode } & Attributes;

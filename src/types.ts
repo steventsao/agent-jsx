@@ -195,3 +195,35 @@ export interface ScopeProps {
   prel?: number;
   children?: import("react").ReactNode;
 }
+
+/**
+ * A long-horizon GOAL phase — a declaration, not infrastructure.
+ *
+ * `<phase>` is the one host element that reconciles to NO record: a phase is
+ * not a durable capability, it is a node of the goal's transition graph. The
+ * `on` map is pure serializable config (child-local outcome -> target phase
+ * name), so an evaluate-time sweep (`collectPhases`) yields the whole graph AS
+ * DATA, which `buildGoalTable` folds into the runtime transition table.
+ * Children of the ACTIVE phase mount normally; a goal provider decides which
+ * fragment that is.
+ *
+ * Behavior never lives here: an edge names a target, never a closure. That is
+ * what keeps the graph checkable before anything runs and serializable across
+ * hibernation.
+ */
+export interface PhaseProps {
+  /** Phase identity — the transition table's state key. Required, stable across renders. */
+  name: string;
+  /**
+   * Outgoing edges: outcome -> target phase name. Serializable, never functions.
+   *
+   * Keys are CHILD-LOCAL outcome names (lowercase by convention: `done`,
+   * `failed`, `release_detected`), scoped to THIS phase — two phases may both
+   * use `done` and mean different edges. A child emits the bare outcome; the
+   * goal provider that minted its grant attributes the source phase.
+   */
+  on?: Record<string, string>;
+  /** Marks the goal's entry phase. At most one phase per goal may set it. */
+  initial?: boolean;
+  children?: import("react").ReactNode;
+}

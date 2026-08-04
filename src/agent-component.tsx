@@ -44,7 +44,24 @@ import type {
   AgentSkillSource,
   AgentToolSet,
   McpServerDefinitions,
+  PhaseProps,
 } from "./types.ts";
+
+/**
+ * Public authoring grammar for a goal phase declaration — PascalCase, per
+ * React grammar: lowercase is the host layer, components are capitalized.
+ * A transparent function component: it evaluates inline to the `phase` host
+ * node, so `collectPhases` and every emitter see exactly the intrinsic they
+ * always saw. The lowercase `<phase>` remains valid as the host-layer
+ * representation (goal providers re-emit it when re-declaring phases).
+ *
+ * `children` is declared with THIS module's ReactNode so the react-free
+ * runtime copy (which rewrites ReactNode → unknown) accepts data elements,
+ * exactly like the `phase` intrinsic entry in the data JSX runtime.
+ */
+export function Phase(props: Omit<PhaseProps, "children"> & { children?: ReactNode }): ReactNode {
+  return <phase {...props} />;
+}
 
 /** What a child agent's implementation receives at runtime. `emit` is the
  *  continuation output channel — call it when the result is ready (e.g. in a

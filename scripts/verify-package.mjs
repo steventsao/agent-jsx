@@ -11,6 +11,7 @@ const entrypoints = [
     "emitCloudflare",
     "emitThink",
   ]],
+  ["@steventsao/agent-jsx/goal", ["buildGoalTable", "goalInit", "goalReducer"]],
   ["@steventsao/agent-jsx/jsx-runtime", ["Fragment", "jsx", "jsxs"]],
   ["@steventsao/agent-jsx/jsx-dev-runtime", ["Fragment", "jsxDEV"]],
 ];

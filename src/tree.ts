@@ -30,6 +30,8 @@ const DEFINITION_HOST_KINDS = new Set<string>([
   "msg",
   "scope",
   "text",
+  // Goal declaration. NOT an infra kind: it reconciles to no record.
+  "phase",
 ]);
 const PROMPT_HOST_KINDS = new Set(["prompt", "sys", "msg", "scope", "text"]);
 
@@ -114,6 +116,53 @@ export function collectInfra(node: HostNode | null, out: InfraRecord[] = []): In
     });
   }
   for (const child of node.children) collectInfra(child, out);
+  return out;
+}
+
+/** One `<phase>` declaration, swept out of a committed tree as plain data. */
+export interface CollectedPhase {
+  name: string;
+  /** Outgoing edges: child-local outcome name -> target phase name. */
+  on: Record<string, string>;
+  /** Marks the goal's entry phase. */
+  initial: boolean;
+}
+
+/**
+ * Sweep the committed tree into the declared goal graph.
+ *
+ * The twin of `collectInfra`, and deliberately a SEPARATE sweep: `<phase>`
+ * produces no `InfraRecord` because a phase is not a durable capability — it is
+ * a node of a transition graph. Everything a phase declares is serializable
+ * (`name`, an `on` map of outcome -> target NAME), so this sweep hands
+ * `buildGoalTable` the whole machine as data, before anything runs and without
+ * ever capturing a closure. A `<phase>`'s children are still walked, so a
+ * provider that mounts only the active fragment reports every declared phase
+ * either way.
+ */
+export function collectPhases(node: HostNode | null, out: CollectedPhase[] = []): CollectedPhase[] {
+  if (!node) return out;
+  if (node.type === "phase") {
+    const { name, on, initial } = node.props as {
+      name?: unknown;
+      on?: unknown;
+      initial?: unknown;
+    };
+    if (typeof name !== "string" || !name) {
+      throw new Error("<phase> requires a stable string `name` prop (the goal-machine state key)");
+    }
+    const edges: Record<string, string> = {};
+    for (const [event, target] of Object.entries((on ?? {}) as Record<string, unknown>)) {
+      if (typeof target !== "string" || !target) {
+        throw new Error(
+          `<phase name="${name}"> edge "${event}" must name a target phase (a serializable string), not ${typeof target}`
+        );
+      }
+      edges[event] = target;
+    }
+    out.push({ name, on: edges, initial: initial === true });
+  }
+  for (const child of node.children) collectPhases(child, out);
   return out;
 }
 

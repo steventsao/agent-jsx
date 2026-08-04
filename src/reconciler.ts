@@ -27,7 +27,13 @@ import { collectInfra, type HostNode } from "./tree.ts";
 // live in `tree.ts` (no react-reconciler import) so compiled artifacts can
 // use them without pulling the reconciler; this module keeps the dev/React
 // mount path.
-export { collectInfra, collectPrompt, type HostNode } from "./tree.ts";
+export {
+  collectInfra,
+  collectPhases,
+  collectPrompt,
+  type CollectedPhase,
+  type HostNode,
+} from "./tree.ts";
 
 export interface Container {
   /** Top-level host children — a fragment root appends several. */
