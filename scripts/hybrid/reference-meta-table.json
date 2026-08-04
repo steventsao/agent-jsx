@@ -105,5 +105,15 @@
       1754
     ]
   },
-  "source": "scripts/hybrid/fixtures/table-page.pdf (arXiv 2602.19961v1 p32)"
+  "source": "scripts/hybrid/fixtures/table-page.pdf (arXiv 2602.19961v1 p32)",
+  "tables": {
+    "r1": {
+      "cell_count": 60,
+      "grid": [
+        12,
+        5
+      ],
+      "merged": []
+    }
+  }
 }

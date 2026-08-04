@@ -1,0 +1,129 @@
+{
+  "crops": {
+    "r0": {
+      "box": [
+        23,
+        0,
+        478,
+        267
+      ],
+      "sha256": "f3091a9076e90642941b252a18e75cc3b9950c81766748957e4903a8b6023cdb"
+    }
+  },
+  "layout": {
+    "detected": 1,
+    "figures_dropped": 0,
+    "ocr_regions": 1,
+    "table_regions": 1
+  },
+  "page": {
+    "dpi": 150,
+    "sha256": "d24366587bf82578cd6242322db02c1a93cdd75ac587c72d5fdf3df328ff67d3",
+    "size": [
+      486,
+      267
+    ]
+  },
+  "source": "scripts/hybrid/fixtures/pubtabnet-PMC5343394_003_00.png (PubTabNet; PMC5343394 Table 3, CC BY 4.0 — see fixtures/LICENSES.md)",
+  "tables": {
+    "r0": {
+      "cell_count": 74,
+      "grid": [
+        21,
+        4
+      ],
+      "merged": [
+        {
+          "span": [
+            1,
+            2,
+            0,
+            0
+          ],
+          "text": "Narcotics on a regular schedule is preferred over PRN* schedule for continuous pain"
+        },
+        {
+          "span": [
+            3,
+            4,
+            0,
+            0
+          ],
+          "text": "Accurate judige of the intensity of the patient's pain s the patient"
+        },
+        {
+          "span": [
+            5,
+            6,
+            0,
+            0
+          ],
+          "text": "Distraction by use of music or relaxation decrease feeling of pain"
+        },
+        {
+          "span": [
+            7,
+            8,
+            0,
+            0
+          ],
+          "text": "Increasing narcotic analgesic requirement are signs, patient is.becoming addicted"
+        },
+        {
+          "span": [
+            9,
+            10,
+            0,
+            0
+          ],
+          "text": "Severe chronic pain often.need higher dosages of pain medications.than acute pain"
+        },
+        {
+          "span": [
+            11,
+            12,
+            0,
+            0
+          ],
+          "text": "Narcotics for pediatric patients can cause respiratory depression"
+        },
+        {
+          "span": [
+            13,
+            14,
+            0,
+            0
+          ],
+          "text": "Analgesics for chronic joint pain cases as needed"
+        },
+        {
+          "span": [
+            15,
+            16,
+            0,
+            0
+          ],
+          "text": "Analgesic for cancer pani patienits as needed"
+        },
+        {
+          "span": [
+            17,
+            18,
+            0,
+            0
+          ],
+          "text": "Reports of patient/family, narcotic causing euphoria, should be given a lower dose of the"
+        },
+        {
+          "span": [
+            19,
+            20,
+            0,
+            0
+          ],
+          "text": "Do children need better attention for managing their pain?"
+        }
+      ]
+    }
+  }
+}

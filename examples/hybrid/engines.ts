@@ -161,6 +161,41 @@ export function renderTablePage(): RenderedPage {
   return renderPdf(join(HYBRID_DIR, "fixtures", "table-page.pdf"));
 }
 
+export const PUBTABNET_PNG = join(
+  HYBRID_DIR,
+  "fixtures",
+  "pubtabnet-PMC5343394_003_00.png",
+);
+
+/**
+ * A PubTabNet table with MERGED cells (PMC5343394 Table 3, CC BY 4.0 — see
+ * scripts/hybrid/fixtures/LICENSES.md). The fixture engines.py rule D7 exists
+ * for: 10 `rowspan=2` merges whose text must be repeated into both rows.
+ *
+ * Unlike the other two inputs this one is ALREADY a raster, so there is no
+ * render step — the committed PNG is the page, byte for byte, in both phases.
+ * That is also why nothing here shells out to python: re-encoding the fixture
+ * would change the very bytes whose sha256 the oracle pins.
+ */
+export function loadPubtabnetPage(): RenderedPage {
+  const bytes = readFileSync(PUBTABNET_PNG);
+  const page = bytes.toString("base64");
+  return {
+    page,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    ...pngSize(bytes),
+  };
+}
+
+/** Width/height straight out of the PNG IHDR — cheaper and more honest than
+ *  booting a model process to ask an image its size. */
+function pngSize(bytes: Buffer): { width: number; height: number } {
+  if (bytes.length < 24 || bytes.readUInt32BE(12) !== 0x49484452 /* "IHDR" */) {
+    throw new Error(`${PUBTABNET_PNG} is not a PNG with a leading IHDR chunk`);
+  }
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
 export function createHybridEngines(): HybridEngines {
   return {
     layout: (page) => {
@@ -174,6 +209,10 @@ export function createHybridEngines(): HybridEngines {
       return readB64(out);
     },
     ocr: (crop) => py<{ text: string }>(["ocr", writeB64(crop, ".png")]).text,
+    // `engines.py table` also returns the model's pre-placement `spans`/`cells`.
+    // The composition deliberately does NOT take them: they are D7 evidence for
+    // the oracle's meta file, and a specialist that could see them could report
+    // a grid its own spans did not justify.
     table: (crop) => py<{ rows: string[][] }>(["table", writeB64(crop, ".png")]).rows,
   };
 }
