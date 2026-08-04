@@ -8,7 +8,16 @@ Status: **layers 1–3 GREEN** (commit 83fa675, see COMPAT-REPORT.md). **v0.5 GR
 |---|---|---|---|---|
 | 1. Unit | bun test | `bun test tests` | parity theorem holds; emitters honor `runtimeImport`; artifact graph is react-machinery-free; wrangler fragment valid | ✅ GREEN |
 | 2. cloudflare | vitest-pool-workers (real workerd) | `cd compat/cloudflare && bun install --frozen-lockfile && bun run test` | generated classes run on the REAL `agents` pkg: spawn w/ props, prop-change push, callback→parent dispatch, despawn, idempotent wake | ✅ GREEN |
-| 3. flue | Vitest + real `@flue/runtime` | `cd compat/flue && bun install --frozen-lockfile && bun run test` | generated modules satisfy flue's own validators; spawnPlan derives stable-id descriptors | ✅ GREEN |
+| 3. flue | Vitest + real `@flue/runtime` | *(suite removed 2026-08-04)* | generated modules satisfy flue's own validators; spawnPlan derives stable-id descriptors | 🪦 RETIRED |
+
+> **Layer 3 retired (2026-08-04):** flue 2.0.0 removed `defineWorkflow`/`invoke` — `compat/flue`
+> pinned an API that no longer exists, so the suite proved compatibility with a dead runtime and
+> was deleted (history: COMPAT-REPORT.md, this file's v0.5 contract). The `emit-flue` adapters and
+> `workflow-executor.ts` remain in-tree but are **unproven against flue 2.x** (durable conversation
+> records / submissionId model); re-prove with a new suite before trusting them on a real deploy.
+> `compat/pdf-target` (hand-written Phase A reference) was removed in the same pass: the equality
+> theorem `COMPILED === HAND-WRITTEN === GOLDEN` is proven (COMPAT-REPORT #25–#32), and
+> `compat/pdf-compiled` remains as the living regression suite against the golden oracle.
 
 ## Rules of engagement (for whoever makes this green)
 
