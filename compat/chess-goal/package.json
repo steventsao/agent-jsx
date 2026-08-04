@@ -1,0 +1,29 @@
+{
+  "name": "agent-jsx-chess-goal-worker",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#agentjsx/*": "./src/generated/runtime/*.ts"
+  },
+  "scripts": {
+    "generate": "bun scripts/generate.tsx",
+    "typecheck": "bun run generate && tsc --noEmit",
+    "test": "bun run generate && bun test test",
+    "dev": "bun run generate && wrangler dev",
+    "deploy": "bun run generate && wrangler deploy --config wrangler.deploy.jsonc"
+  },
+  "dependencies": {
+    "@cloudflare/think": "0.15.1",
+    "@openrouter/ai-sdk-provider": "2.10.0",
+    "agents": "0.20.1",
+    "ai": "^6.0.138",
+    "chess.js": "^1.4.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260715.1",
+    "@types/react": "^19.2.17",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.77.0"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agent-jsx-chess-goal",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-07-15",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "ai": { "binding": "AI" },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "CHESS_GOAL_GAME",
+        "class_name": "ChessGoalGame",
+        "script_name": "agent-jsx-chess-goal"
+      },
+      {
+        "name": "CHESS_GOAL_MATCH",
+        "class_name": "ChessGoalMatchDurable",
+        "script_name": "agent-jsx-chess-goal"
+      },
+      {
+        "name": "OPENAI_CHESS_PLAYER",
+        "class_name": "OpenaiChessPlayerDurable",
+        "script_name": "agent-jsx-chess-goal"
+      },
+      {
+        "name": "GEMINI_CHESS_PLAYER",
+        "class_name": "GeminiChessPlayerDurable",
+        "script_name": "agent-jsx-chess-goal"
+      }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["ChessGoalGame"] },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": [
+        "ChessGoalMatchDurable",
+        "OpenaiChessPlayerDurable",
+        "GeminiChessPlayerDurable"
+      ]
+    }
+  ]
+}
