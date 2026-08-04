@@ -112,7 +112,8 @@
   "layout": {
     "detected": 13,
     "figures_dropped": 1,
-    "ocr_regions": 12
+    "ocr_regions": 12,
+    "table_regions": 0
   },
   "page": {
     "dpi": 150,

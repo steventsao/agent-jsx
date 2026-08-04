@@ -19,6 +19,11 @@ Models (paper-backed, both real, both downloaded from HF):
            (arXiv 2409.18839).
   ocr    : RapidOCR 1.4.4 ONNX (PP-OCRv4 det + rec + cls, ONNXRuntime CPU)
            arXiv 2009.09941 (PP-OCR) / PP-OCRv4.
+  table  : RapidTable 3.0.2 / SLANet-plus ONNX (ONNXRuntime CPU) — the table
+           structure recognizer from PP-Structure (arXiv 2210.05391), SLANet
+           lineage surveyed in arXiv 2507.05595. Structure only: the cell TEXT
+           comes from the same RapidOCR above, so a table region and a text
+           region are recognized by the SAME recognizer.
 
 Conventions (fixed, shared with examples/pdf/core/extract.ts):
   bbox = normalized TOP-LEFT origin {x0, y0, x1, y1}, 0 <= x0 < x1 <= 1.
@@ -38,19 +43,38 @@ Determinism rules (the equality bar depends on all of these):
   D6. OCR lines are re-sorted top-to-bottom then left-to-right and joined with
       single spaces; internal whitespace is collapsed. RapidOCR's own ordering
       is not trusted.
+  D7. TABLE ROWS MAPPING. SLANet emits a token stream that RapidTable turns
+      into (a) an HTML table whose <td> cells already carry the matched OCR
+      text and (b) `logic_points`, the same cells decoded as integer grid
+      spans (row_start, row_end, col_start, col_end). BOTH derive from that one
+      token stream, so the Nth <td> IS the Nth logic point; we assert that and
+      raise rather than guess if it ever stops holding. Rows are then built by
+      pure integer placement, never by geometry:
+        - grid is (max row_end + 1) x (max col_end + 1), pre-filled with ""
+        - cell i's text is written into EVERY (r, c) its span rectangle covers,
+          so a colspan/rowspan cell repeats rather than leaving holes — a grid
+          of strings has no way to say "merged", and repeating keeps every row
+          the same width
+        - cell text is HTML-unescaped, stripped of residual inline tags, and
+          whitespace-collapsed by the same `_WS` rule as D6
+      No float, no sort, no tolerance enters this path: the mapping is total
+      and order-free, so it cannot disagree between the two phases.
 
 Subcommands (all JSON on stdout):
   render-page <pdf> <out.png> [--dpi N]   -> {"path","width","height","dpi"}
   layout      <page.png>                  -> {"regions":[{id,tag,bbox,score}]}
   crop        <page.png> <out.png> --bbox x0,y0,x1,y1 -> {"path","box",...}
   ocr         <crop.png>                  -> {"text"}
+  table       <crop.png>                  -> {"rows": [[cell, ...], ...]}
   version                                 -> {"models": {...}}
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
+import html as htmllib
 import json
 import os
 import random
@@ -74,6 +98,12 @@ LAYOUT_FILE = "doclayout_yolo_docstructbench_imgsz1024.pt"
 LAYOUT_IMGSZ = 1024
 LAYOUT_CONF = 0.25
 FLOAT_PLACES = 4
+
+# Table structure recognizer. SLANet-plus is the PP-Structure table model
+# (7.4MB ONNX) served by RapidTable; ONNXRuntime-CPU single-threaded is
+# bit-reproducible run to run, same reason RapidOCR was picked over surya.
+TABLE_MODEL = "slanet_plus"
+TABLE_ENGINE_CFG = {"intra_op_num_threads": 1, "inter_op_num_threads": 1}
 
 # DocStructBench classes -> our three-tag vocabulary. The composition only
 # dispatches on {text, table, figure}; `abandon` (headers/footers/page numbers)
@@ -116,9 +146,16 @@ def _seed() -> None:
         pass
 
 
+# Where `_emit` writes. `main` points this at the REAL stdout and then
+# redirects sys.stdout to stderr, so model/hub chatter can never interleave
+# with the JSON payload. None = write to whatever sys.stdout currently is.
+_EMIT_SINK = None
+
+
 def _emit(payload: dict) -> None:
-    json.dump(payload, sys.stdout, sort_keys=True, ensure_ascii=False)
-    sys.stdout.write("\n")
+    sink = _EMIT_SINK if _EMIT_SINK is not None else sys.stdout
+    json.dump(payload, sink, sort_keys=True, ensure_ascii=False)
+    sink.write("\n")
 
 
 def _sha256(path: str) -> str:
@@ -288,11 +325,19 @@ def _ocr_engine():
 _WS = re.compile(r"\s+")
 
 
-def recognize(crop_png: str) -> str:
-    """RapidOCR -> one whitespace-collapsed reading-order string (D6)."""
+def _ocr_raw(crop_png: str) -> list:
+    """The ONE RapidOCR invocation. `recognize` (text regions) and `table_rows`
+    (table cells) both go through here, so a table's cell text and a paragraph's
+    text are produced by the same recognizer on the same terms."""
     _seed()
     engine = _ocr_engine()
     result, _elapsed = engine(crop_png)
+    return result or []
+
+
+def recognize(crop_png: str) -> str:
+    """RapidOCR -> one whitespace-collapsed reading-order string (D6)."""
+    result = _ocr_raw(crop_png)
     if not result:
         return ""
 
@@ -309,6 +354,88 @@ def recognize(crop_png: str) -> str:
 
 def cmd_ocr(args: argparse.Namespace) -> None:
     _emit({"text": recognize(args.crop)})
+
+
+# ---------------------------------------------------------------------------
+# table  (D7 — the one and only structure->rows mapping)
+
+_TABLE_ENGINE = None
+
+
+def _table_engine():
+    global _TABLE_ENGINE
+    if _TABLE_ENGINE is None:
+        from rapid_table import EngineType, ModelType, RapidTable, RapidTableInput
+
+        _TABLE_ENGINE = RapidTable(
+            RapidTableInput(
+                model_type=ModelType(TABLE_MODEL),
+                engine_type=EngineType.ONNXRUNTIME,
+                # `use_ocr` only decides whether RapidTable may run its OWN
+                # recognizer when no ocr_results are supplied. We always supply
+                # them (from `_ocr_raw`), so it never does; keeping the flag on
+                # is what makes it emit the text-filled HTML we read cells from.
+                use_ocr=True,
+                engine_cfg=dict(TABLE_ENGINE_CFG),  # D1: single-threaded CPU
+            )
+        )
+    return _TABLE_ENGINE
+
+
+_TD = re.compile(r"<td[^>]*>(.*?)</td>", re.S)
+_TAG = re.compile(r"<[^>]+>")
+
+
+def _cell_text(raw: str) -> str:
+    """A <td> body -> one clean string. Same whitespace rule as D6."""
+    return _WS.sub(" ", htmllib.unescape(_TAG.sub("", raw))).strip()
+
+
+def table_rows(crop_png: str) -> list[list[str]]:
+    """SLANet structure + RapidOCR text -> a rectangular grid of cell strings.
+
+    See D7 in the module docstring for the mapping rule. Returns [] for a crop
+    the model finds no cells in — an empty table is a completed region, not an
+    error, exactly as an empty recognition is for a text region.
+    """
+    ocr_result = _ocr_raw(crop_png)
+    boxes = [line[0] for line in ocr_result]
+    texts = tuple(line[1] for line in ocr_result)
+    scores = tuple(line[2] for line in ocr_result)
+
+    engine = _table_engine()
+    out = engine(crop_png, ocr_results=[[boxes, texts, scores]])
+
+    htmls = getattr(out, "pred_htmls", None) or []
+    points = getattr(out, "logic_points", None) or []
+    if not htmls or len(points) == 0:
+        return []
+
+    cells = [_cell_text(m) for m in _TD.findall(htmls[0])]
+    spans = [tuple(int(v) for v in p) for p in points[0]]
+
+    # D7 — both come from the same token stream; if that ever stops being true
+    # we must NOT guess an alignment. Fail loudly instead.
+    if len(cells) != len(spans):
+        raise SystemExit(
+            f"table: {len(cells)} <td> cells but {len(spans)} logic points — "
+            "structure/HTML alignment broke, refusing to guess a mapping"
+        )
+    if not spans:
+        return []
+
+    n_rows = max(s[1] for s in spans) + 1
+    n_cols = max(s[3] for s in spans) + 1
+    grid = [["" for _ in range(n_cols)] for _ in range(n_rows)]
+    for text, (r0, r1, c0, c1) in zip(cells, spans):
+        for r in range(r0, r1 + 1):
+            for c in range(c0, c1 + 1):
+                grid[r][c] = text
+    return grid
+
+
+def cmd_table(args: argparse.Namespace) -> None:
+    _emit({"rows": table_rows(args.crop)})
 
 
 # ---------------------------------------------------------------------------
@@ -337,6 +464,13 @@ def cmd_version(_args: argparse.Namespace) -> None:
                 "ocr": {
                     "engine": "RapidOCR (PP-OCRv4 det+cls+rec, ONNXRuntime CPU)",
                     "pkg": f"rapidocr-onnxruntime=={ver('rapidocr-onnxruntime')}",
+                },
+                "table": {
+                    "engine": "RapidTable SLANet-plus (PP-Structure, ONNXRuntime CPU)",
+                    "model_type": TABLE_MODEL,
+                    "engine_cfg": TABLE_ENGINE_CFG,
+                    "pkg": f"rapid-table=={ver('rapid-table')}",
+                    "text_from": "same RapidOCR as the `ocr` subcommand",
                 },
             },
             "runtime": {
@@ -380,11 +514,27 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("crop")
     p.set_defaults(func=cmd_ocr)
 
+    p = sub.add_parser("table")
+    p.add_argument("crop")
+    p.set_defaults(func=cmd_table)
+
     p = sub.add_parser("version")
     p.set_defaults(func=cmd_version)
 
     args = parser.parse_args(argv)
-    args.func(args)
+
+    # stdout is the JSON channel and nothing else. The HF hub prints an
+    # unauthenticated-requests notice and RapidTable's logger prints model
+    # paths; both would otherwise land between the caller and the payload.
+    # Pin `_emit` to the real stdout, then send everything else to stderr.
+    global _EMIT_SINK
+    _EMIT_SINK = sys.stdout
+    try:
+        with contextlib.redirect_stdout(sys.stderr):
+            args.func(args)
+    finally:
+        _EMIT_SINK.flush()
+        _EMIT_SINK = None
     return 0
 
 

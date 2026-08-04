@@ -20,10 +20,17 @@
  *     bbox closed over. A child cannot address a pixel outside its region.
  *   - Engines are method props, so swapping fixtures for live models is a
  *     change to the caller, not to this file.
- *   - Tag dispatch is parent-owned: `text` mounts OcrText; `figure` mounts
- *     NOTHING (a figure has no text layer, so the oracle never OCRs one);
- *     `table` is a declared-but-unreached branch on this input (see TODO).
+ *   - Tag dispatch is parent-owned: `text` mounts OcrText; `table` mounts
+ *     ParseTable; `figure` mounts NOTHING (a figure has no text layer, so the
+ *     oracle never recognizes one).
  *   - Assembly is deterministic code in a one-shot <task>, not an agent.
+ *
+ * The `table` branch used to be a comment rather than code: every non-figure
+ * region mounted OcrText, so a table would silently have been flattened into
+ * one string. Adding ParseTable is what makes the dispatch real. Note what did
+ * NOT change to accommodate it — attenuation, the pull-don't-push rule, the
+ * figure drop, the pending/complete predicate, and assembly all kept their
+ * shape; a second specialist is just a second `map` over a filtered list.
  */
 
 import { agentComponent } from "../../src/agent-component.tsx";
@@ -34,12 +41,19 @@ import type { Bbox, HybridEngines, Region } from "./engines.ts";
 export type { Bbox, HybridEngines, Region };
 
 /** One row of the equality object. Byte-shape of a `segments[]` entry in
- *  scripts/hybrid/reference-output.json. */
+ *  scripts/hybrid/reference-output*.json.
+ *
+ *  `text` and `rows` are mutually exclusive and the unused one is ABSENT, not
+ *  undefined: a `text` segment has exactly {id,tag,bbox,text}, a `table`
+ *  segment exactly {id,tag,bbox,rows}. Deep-equality treats a present-but-
+ *  undefined key as absent, so emitting `text: undefined` on a table would
+ *  quietly widen what the golden accepts. */
 export interface Segment {
   id: string;
   tag: string;
   bbox: Bbox;
-  text: string;
+  text?: string;
+  rows?: string[][];
 }
 
 // ---------------------------------------------------------------------------
@@ -106,6 +120,45 @@ export const OcrText = agentComponent<OcrTextProps, Record<string, never>>({
 });
 
 // ---------------------------------------------------------------------------
+// ParseTable — table structure recognition on ONE attenuated crop.
+//
+// Structurally identical to OcrText: same attenuated zero-arg `crop`, same
+// result grant. The ONLY difference is which engine it is handed and what
+// shape comes back. That is the point of a tag dispatch — a new region type
+// costs one specialist, not a new pipeline.
+
+export interface ParseTableProps {
+  regionId: string;
+  /** Attenuated: zero-arg, this region's bbox pre-bound by the parent. */
+  crop: () => string;
+  parseTable: (crop: string) => string[][];
+  onRows: (result: { regionId: string; rows: string[][] }) => void;
+}
+
+export const ParseTable = agentComponent<ParseTableProps, Record<string, never>>({
+  agentName: "parse-table",
+  initialState: {},
+  capabilities: {
+    crop: { kind: "method" },
+    parseTable: { kind: "method" },
+    onRows: { kind: "result" },
+  },
+  sampleProps: {
+    regionId: "sample",
+    crop: () => "",
+    parseTable: () => [],
+    onRows: () => {},
+  },
+  impl: ({ regionId }) => (
+    <prompt>
+      <sys p={10}>
+        You recover the cell grid of ONE cropped table region ({regionId}).
+      </sys>
+    </prompt>
+  ),
+});
+
+// ---------------------------------------------------------------------------
 // HybridPipeline — the root reactive machine.
 
 export interface HybridState extends Record<string, unknown> {
@@ -113,6 +166,7 @@ export interface HybridState extends Record<string, unknown> {
   page: string | null;
   regions: Region[] | null;
   texts: Record<string, string>;
+  tables: Record<string, string[][]>;
   segments: Segment[] | null;
 }
 
@@ -120,6 +174,7 @@ export const initialHybridState: HybridState = {
   page: null,
   regions: null,
   texts: {},
+  tables: {},
   segments: null,
 };
 
@@ -135,14 +190,21 @@ export const idOrder = (id: string): number => {
 
 /** Deterministic assembly — plain code, not an agent. Mirrors reference.py
  *  step 5 exactly: figures are already gone, sort by numeric id, emit
- *  {id, tag, bbox, text}. */
+ *  {id, tag, bbox, text} for text regions and {id, tag, bbox, rows} for
+ *  tables. The unused key is never written, so the two row shapes stay exactly
+ *  as narrow as the oracle's. */
 export function assembleSegments(
   regions: Region[],
   texts: Record<string, string>,
+  tables: Record<string, string[][]> = {},
 ): Segment[] {
   return regions
     .filter((r) => r.tag !== "figure")
-    .map((r) => ({ id: r.id, tag: r.tag, bbox: r.bbox, text: texts[r.id] ?? "" }))
+    .map((r) =>
+      r.tag === "table"
+        ? { id: r.id, tag: r.tag, bbox: r.bbox, rows: tables[r.id] ?? [] }
+        : { id: r.id, tag: r.tag, bbox: r.bbox, text: texts[r.id] ?? "" },
+    )
     .sort((a, b) => idOrder(a.id) - idOrder(b.id));
 }
 
@@ -153,16 +215,23 @@ export function HybridPipeline({
   store: AgentStore<HybridState>;
   engines: HybridEngines;
 }) {
-  const { page, regions, texts, segments } = useAgentState(store);
+  const { page, regions, texts, tables, segments } = useAgentState(store);
 
   // A figure carries no text layer: it is dropped here, so no specialist is
   // ever declared for it. This is the same filter as reference.py step 3 —
   // expressed as "nothing mounts" rather than as a list comprehension.
   const parseable = (regions ?? []).filter((r) => r.tag !== "figure");
   // `=== undefined` on purpose: an empty recognition is a COMPLETED segment,
-  // not pending work (PARSEBENCH-RUN.md finding #4).
-  const pending = parseable.filter((r) => texts[r.id] === undefined);
-  const allParsed = regions !== null && pending.length === 0;
+  // not pending work (PARSEBENCH-RUN.md finding #4). An empty GRID is likewise
+  // a completed table, which is why the check is on the key and not on length.
+  const pendingText = parseable.filter(
+    (r) => r.tag !== "table" && texts[r.id] === undefined,
+  );
+  const pendingTables = parseable.filter(
+    (r) => r.tag === "table" && tables[r.id] === undefined,
+  );
+  const pendingCount = pendingText.length + pendingTables.length;
+  const allParsed = regions !== null && pendingCount === 0;
 
   return (
     <>
@@ -175,7 +244,7 @@ export function HybridPipeline({
         />
       )}
       {page &&
-        pending.map((region) => (
+        pendingText.map((region) => (
           <OcrText
             key={region.id}
             name={`ocr:${region.id}`}
@@ -189,17 +258,32 @@ export function HybridPipeline({
             }
           />
         ))}
+      {page &&
+        pendingTables.map((region) => (
+          <ParseTable
+            key={region.id}
+            name={`table:${region.id}`}
+            regionId={region.id}
+            // Same attenuation as OcrText — a table specialist is no more
+            // privileged than a text one.
+            crop={() => engines.crop(store.get().page!, region.bbox)}
+            parseTable={engines.table}
+            onRows={({ regionId, rows }) =>
+              store.set((s) => ({ ...s, tables: { ...s.tables, [regionId]: rows } }))
+            }
+          />
+        ))}
       {allParsed && !segments && (
         <task
           name="assemble"
-          run={() => assembleSegments(regions!, store.get().texts)}
+          run={() => assembleSegments(regions!, store.get().texts, store.get().tables)}
           onDone={(r) => store.set((s) => ({ ...s, segments: r as Segment[] }))}
         />
       )}
       <prompt>
         <sys p={10}>
           Hybrid OCR pipeline: {regions ? `${regions.length} regions` : "awaiting layout"};{" "}
-          {segments ? `assembled ${segments.length} segments.` : `${pending.length} region(s) recognizing.`}
+          {segments ? `assembled ${segments.length} segments.` : `${pendingCount} region(s) recognizing.`}
         </sys>
       </prompt>
     </>
