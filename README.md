@@ -213,6 +213,9 @@ alpha release process.
 - [Think target](docs/think-target.md) and [agent-tool investigation](docs/agent-tools-investigation.md) — model-driven Cloudflare compilation.
 - [Cloudflare adapter](docs/cloudflare-adapter.md) — the original host-to-Durable-Object mapping.
 - [Agent-first CLI](docs/agent-first-cli.md) — the CLI direction note.
+- [Ax + Flue harness optimization](compat/flue/examples/harness-optimization/) —
+  an offline whole-workspace episode with named harness components and local
+  `vitest-evals` reporting.
 - [Fixture guide](fixtures/README.md) — the compiler's byte-locked output families.
 
 Useful entry points:

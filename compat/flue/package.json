@@ -5,7 +5,10 @@
   "description": "Proves generated flue modules load against the REAL @flue/runtime from the local checkout (~/dev/flue) \u2014 its validators are the assertion.",
   "scripts": {
     "generate": "bun scripts/generate.tsx",
-    "test": "bun run generate && vitest run && bun test/pdf-target.check.ts"
+    "test": "bun run generate && vitest run && bun test/pdf-target.check.ts",
+    "example:harness-optimize": "node examples/harness-optimization/run.ts",
+    "eval:harness": "vitest run test/harness-optimization.eval.test.ts --reporter=vitest-evals/reporter --reporter=json --outputFile.json=vitest-results.json",
+    "eval:harness:ui": "vitest-evals serve vitest-results.json"
   },
   "dependencies": {
     "@flue/runtime": "1.0.0-beta.9",
@@ -13,8 +16,12 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@ax-llm/ax": "23.0.10",
+    "@earendil-works/pi-ai": "0.80.3",
     "@types/bun": "^1.2.0",
     "typescript": "^5.7.0",
-    "vitest": "~3.2.0"
+    "valibot": "^1.4.2",
+    "vitest": "~4.1.6",
+    "vitest-evals": "0.15.0"
   }
 }
