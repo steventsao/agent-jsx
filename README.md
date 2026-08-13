@@ -1,27 +1,26 @@
 # agent-jsx
 
-**A typed composition language for durable agents.**
+**Compose durable AI agents with typed JSX.**
 
-> Experimental. The APIs are still changing; use the compatibility suites as
-> the source of truth before deploying anything important.
+`agent-jsx` lets you define an agent once, compose it like a component, and
+compile the same tree to Cloudflare Agents. Models, durable state, and prompts
+stay inside the agent definition; data and authority cross boundaries
+explicitly as typed props.
 
-Declare agents as hierarchy-free classes, compose them as JSX, and compile the
-result to Cloudflare Agents. Serializable props are input, function props are
-explicit capabilities, and `name` is durable instance identity.
+> Experimental: APIs may change while the package is in alpha.
 
 [API reference](https://steventsao.github.io/agent-jsx/api/) ·
-[Chess example](examples/chess/) ·
+[Goal example](examples/goal/) ·
+[Chess example](examples/chess-goal/) ·
 [Cloudflare Think target](docs/think-target.md)
 
 ## Install
-
-Alpha releases use the `alpha` dist-tag:
 
 ```sh
 bun add @steventsao/agent-jsx@alpha react@^19
 ```
 
-Authored `.tsx` files use React's automatic JSX runtime:
+Use React's automatic JSX runtime for `.tsx` files:
 
 ```json
 {
@@ -32,199 +31,69 @@ Authored `.tsx` files use React's automatic JSX runtime:
 }
 ```
 
-## The small example
+## Example
 
-This is the intended application surface:
-
-```tsx
-export const ChessMatch = composeAgent(
-  <ChessMatchAgent name="match">
-    {({ turn, handleTurn }) => {
-      if (!turn) return null;
-
-      return (
-        <Board turn={turn}>
-          <Agent
-            agentClass={OpenAIAgent}
-            turn={turn}
-            onTurn={result(handleTurn)}
-          />
-          <Agent
-            agentClass={GeminiAgent}
-            turn={turn}
-            onTurn={result(handleTurn)}
-          />
-        </Board>
-      );
-    }}
-  </ChessMatchAgent>,
-);
-```
-
-`Board` selects the active seat and injects only `side` plus a stable instance
-name. `turn` is explicit input. `result(handleTurn)` is an explicit capability
-grant. A provider class selects behavior; it never implies data, authority, or
-hierarchy.
-
-The compiler has no chess special case. `Board` is ordinary reusable
-composition code, and each `agentClass` stays fully typed.
-
-## Declare an agent
-
-An authored agent owns durable state, callable operations, and one model-facing
-definition. It does not declare whether it is a parent or child.
+Define a sealed worker, then grant its result to a durable supervisor:
 
 ```tsx
-import { Agent } from "@steventsao/agent-jsx/agent";
-import type { ChessPlayerProps } from "./board.js";
-import { PlayerPrompt } from "./player-prompt.js";
+import { result } from "@steventsao/agent-jsx/agent";
+import { agent } from "@steventsao/agent-jsx/agent-component";
 
-interface PlayerState extends Record<string, unknown> {
-  turns: number;
+interface ResearcherProps {
+  question: string;
+  onAnswer: (answer: string) => void;
 }
 
-export default class OpenAIChessPlayer
-  extends Agent<PlayerState, ChessPlayerProps> {
-  static agentName = "openai-chess-player";
-  initialState: PlayerState = { turns: 0 };
+const Researcher = agent<ResearcherProps, { runs: number }>({
+  name: "researcher",
+  model: "openrouter/openai/gpt-5-mini",
+  state: { runs: 0 },
+  props: { question: "", onAnswer: () => {} },
+  capabilities: { onAnswer: "result" },
+  render: ({ props }) => (
+    <prompt>
+      <sys p={10}>Answer with one concise finding.</sys>
+      <msg p={7}>{props.question}</msg>
+    </prompt>
+  ),
+});
 
-  render() {
-    return this.define({
-      model: "openrouter/openai/gpt-5-mini",
-      displayName: "OpenAI",
-      description: "Chooses one legal chess move.",
-      prompt: <PlayerPrompt provider="OpenAI" turn={this.props.turn} />,
-    });
-  }
-}
+export const ResearchTeam = agent<{}, { answer: string | null }>({
+  name: "research-team",
+  state: { answer: null },
+  props: {},
+  render: ({ store }) => (
+    <Researcher
+      name="researcher:primary"
+      question="What changed in the latest release?"
+      onAnswer={result((answer) =>
+        store.set((state) => ({ ...state, answer })),
+      )}
+    />
+  ),
+});
 ```
 
-`render()` is synchronous and returns `this.define(...)`. It declares an agent;
-it never renders UI.
+The contract is deliberately small:
 
-| Definition field | Meaning |
-|---|---|
-| `model` | required explicit model id |
-| `displayName`, `description` | model/tool-facing metadata |
-| `inputSchema`, `outputSchema` | native child-tool boundary contracts |
-| `prompt` | plain text or priority-aware prompt JSX |
-| `tools` | an AI SDK tool map or declarative `<tool>` JSX |
-| `skills` | structural Cloudflare `SkillSource` values |
-| `mcpServers` | named public HTTP endpoints and transports |
+- `agent()` seals reusable identity, model, initial state, and prompt.
+- `name` identifies a mounted durable instance.
+- Plain props are serializable input.
+- Function props cross only through an explicit grant such as `result(...)`.
+- JSX owns composition; nesting alone never grants authority.
 
-The definition can use current `this.props` and `this.state`. Tool objects keep
-their schemas, provider metadata, approval policy, and structured results.
-Compiling a definition performs no provider or MCP network I/O.
+For long-running work, `<Phase>` declares transitions as data. See the
+[repo keeper](examples/goal/repo-keeper.tsx) for a compact loop and
+[parse-pm](examples/parse-pm/) for checkpoints, budgets, recovery, and a human
+approval gate.
 
-Authored MCP descriptors must not contain credentials. Put authenticated MCP
-traffic behind a credential-terminating service; see the
-[Think target guide](docs/think-target.md) for runtime resolution and lifecycle
-rules.
-
-## State and callable methods
-
-State follows the Cloudflare Agent shape. Only methods marked `@callable()` can
-be granted across a composition boundary.
-
-```tsx
-import { Agent, callable } from "@steventsao/agent-jsx/agent";
-
-export default class ChessMatch extends Agent<ChessState> {
-  static agentName = "chess-match";
-  initialState = initialChessState;
-
-  render() {
-    return this.define({
-      model: "openrouter/openai/gpt-5-mini",
-      description: "Alternates two model agents over a chess board.",
-    });
-  }
-
-  get turn() {
-    return turnFor(this.state);
-  }
-
-  @callable()
-  handleTurn(decision: ChessDecision | string): void {
-    this.setState((state) => reduceChessTurn(state, decision));
-  }
-}
-```
-
-The compiler generates the small `compileAgentClass(...)` companion used by
-composition JSX. Authored classes do not call `agentComponent` or declare a
-separate capability map.
-
-## The boundary contract
-
-The rules are deliberately small:
-
-- Non-function props cross a boundary as serializable child input.
-- Function props cross only through an explicit branded grant such as
-  `result(callable)`; nesting alone grants nothing.
-- `name` identifies a mounted durable instance; `static agentName` identifies
-  the reusable agent kind.
-- The parent owns hierarchy. An agent definition never names its parent or
-  children.
-- The compiler never infers model, provider, role, or authority from a class
-  name.
-
-Cloudflare's native `agentTool` returns child output to the parent model. It
-does not invoke parent-owned callback, method, result, or render-prop
-continuation capabilities; the model-driven emitter reports each dropped
-capability kind instead of silently pretending it survived.
-
-## Compile for Cloudflare
-
-```ts
-import {
-  analyzeAgent,
-  discoverAgents,
-  emitCloudflare,
-  emitThink,
-} from "@steventsao/agent-jsx/compile/cloudflare";
-```
-
-| Target | Use it for |
-|---|---|
-| `emitThink` | the complete model-facing definition: model, prompts, native tools, skills, MCP, schemas, and child `agentTool` delegation |
-| `emitCloudflare` | deterministic desired-infrastructure reconciliation, child props, and callable RPC |
-
-`emitCloudflare` keeps model execution, AI SDK tools, skills, and MCP clients
-inert and emits a diagnostic. The complete `render() → this.define(...)`
-contract lowers through `emitThink`.
-
-The repository still contains older low-level Flue adapters, but this authored
-class contract does not add or claim new Flue compatibility.
-
-## Verify it
+## Verify
 
 ```sh
 bun install --frozen-lockfile
 bun run ci
-
-# Deterministic Cloudflare Agents runtime
-cd compat/cloudflare && bun run typecheck && bun run test
-
-# Model-driven Cloudflare Agents + Think runtime
-cd ../think && bun run typecheck && bun run test
-
-# Generated chess target
-cd ../chess && bun run typecheck && bun run test
 ```
 
-The compatibility suites execute generated code against the pinned real
-Cloudflare packages inside workerd rather than replacing the target runtime with
-mocks.
-
-## More
-
-- [examples/chess](examples/chess/) — explicit hierarchy, model turns, and
-  thought bubbles.
-- [docs/think-target.md](docs/think-target.md) — model resolution, tools,
-  skills, MCP, schemas, and target diagnostics.
-- [docs/cloudflare-adapter.md](docs/cloudflare-adapter.md) — deterministic
-  reconcile-mode mapping.
-- [COMPAT.md](COMPAT.md) and [COMPAT-REPORT.md](COMPAT-REPORT.md) — compatibility
-  contracts and real-runtime findings.
-- [CONTRIBUTING.md](CONTRIBUTING.md) — package checks and Changesets releases.
+The compatibility suites execute generated code against pinned Cloudflare
+runtimes in workerd. See [COMPAT.md](COMPAT.md) for the supported contracts and
+[CONTRIBUTING.md](CONTRIBUTING.md) for release workflow details.
