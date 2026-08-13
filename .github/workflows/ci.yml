@@ -45,16 +45,16 @@ jobs:
         include:
           - target: chess
             command: bun run typecheck && bun run test
+          - target: chess-goal
+            command: bun run typecheck && bun run test
           - target: cloudflare
             command: bun run typecheck && bun run test
           - target: document-review
             command: bun run typecheck && bun run test
-          - target: flue
-            command: bun run test
+          - target: parse-pm
+            command: bun run typecheck && bun run test
           - target: pdf-compiled
             command: bun run test
-          - target: pdf-target
-            command: bun run typecheck && bun run test
           - target: think
             command: bun run typecheck && bun run test
     steps:
