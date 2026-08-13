@@ -44,7 +44,7 @@ import { emitThink } from "../src/compile/emit-think.ts";
 import { emitRuntimeFiles } from "../src/compile/runtime-files.ts";
 import { runReactiveStep, runReactiveWorkflow } from "../src/workflow-executor.ts";
 import { turnFor } from "../examples/chess/board.tsx";
-import { GeminiAgent, OpenAIAgent } from "../examples/chess/players.tsx";
+import { GeminiSeat, OpenAISeat } from "../examples/chess-goal/players.tsx";
 import { GoalProvider, type GoalDispatch, type GoalTransition } from "../examples/goal/goal-provider.tsx";
 import { analyzeGoal } from "../examples/goal/goal-dev.ts";
 import {
@@ -69,8 +69,8 @@ const rootModule = (states: ChessGoalState[]): AgentModule => ({
 });
 
 const playerModules: AgentModule[] = [
-  { spec: OpenAIAgent.spec, exportName: "OpenAIAgent", importPath: "../players.tsx" },
-  { spec: GeminiAgent.spec, exportName: "GeminiAgent", importPath: "../players.tsx" },
+  { spec: OpenAISeat.spec, exportName: "OpenAISeat", importPath: "../players.tsx" },
+  { spec: GeminiSeat.spec, exportName: "GeminiSeat", importPath: "../players.tsx" },
 ];
 
 describe("chess goal table", () => {
@@ -109,9 +109,10 @@ describe("chess goal composition — only the active phase's seat mounts", () =>
     const seat = subagents[0]!;
     expect(seat.name).toBe("white:0");
     expect(seat.config.kind).toBe("openai-chess-player");
-    expect(seat.config.side).toBe("white");
-    // Serializable seat input only: no phase names, no edge maps, no vocabulary.
-    expect(Object.keys(seat.config).sort()).toEqual(["kind", "side", "turn"]);
+    // Serializable seat input only: no phase names, no edge maps, no vocabulary
+    // — and no model/identity sprinkles either; the seat is a sealed agent()
+    // capsule, so the side lives in the turn and the model lives in the record.
+    expect(Object.keys(seat.config).sort()).toEqual(["kind", "turn"]);
     expect(seat.config.turn).toMatchObject({ side: "white", ply: 0, lastError: null });
     expect(seat.bindings).toEqual({ onTurn: { kind: "result" } });
   });
@@ -145,7 +146,7 @@ describe("chess goal composition — only the active phase's seat mounts", () =>
 
     expect(seat?.name).toBe("white:0");
     expect(seat?.config.kind).toBe("openai-chess-player");
-    expect(seat?.target).toBe(OpenAIAgent);
+    expect(seat?.target).toBe(OpenAISeat);
   });
 
   it("mounts nothing once the goal is over", () => {
@@ -207,7 +208,7 @@ describe("chess goal reactive step — the worker's /step path", () => {
       initialState: afterE4,
       delegate: (descriptor) => {
         expect(descriptor.agent).toBe("gemini-chess-player");
-        expect(descriptor.target).toBe(GeminiAgent);
+        expect(descriptor.target).toBe(GeminiSeat);
         return { move: "e7e5", note: "mirrors" };
       },
     });
@@ -226,7 +227,7 @@ describe("chess goal reactive workflow — a full scripted match", () => {
       initialState: initialChessGoalState,
       delegate: (descriptor) => {
         const ply = Number(String(descriptor.stableId).split(":")[1]);
-        expect(descriptor.target).toBe(ply % 2 === 0 ? OpenAIAgent : GeminiAgent);
+        expect(descriptor.target).toBe(ply % 2 === 0 ? OpenAISeat : GeminiSeat);
         return { move: FOOLS_MATE[ply]!, note: `scripted ${ply}`, thought: `plan ${ply}` };
       },
     });

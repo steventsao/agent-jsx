@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agent-jsx-parse-pm",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-01-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "PARSE_PM_AGENT",
+        "class_name": "ParsePmAgent",
+        "script_name": "agent-jsx-parse-pm"
+      }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ParsePmAgent"] }]
+  // Secrets (set by NAME, never in config):
+  //   bunx wrangler secret put DEMO_ACCESS_TOKEN --config wrangler.deploy.jsonc
+  //   bunx wrangler secret put OPENROUTER_API_KEY --config wrangler.deploy.jsonc
+}

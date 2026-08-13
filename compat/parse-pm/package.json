@@ -1,0 +1,28 @@
+{
+  "name": "agent-jsx-parse-pm-worker",
+  "private": true,
+  "type": "module",
+  "description": "The parse PM on the metal: ParseAgent as a real `agents` Agent (fibers + stash + keepAlive) driving the compiled-from-examples composition in workerd, with bearer-guarded run/status/topup routes and an eviction-resume proof.",
+  "imports": {
+    "#agentjsx/*": "./src/generated/runtime/*.ts"
+  },
+  "scripts": {
+    "generate": "bun scripts/generate.tsx",
+    "typecheck": "bun run generate && tsc --noEmit",
+    "test": "bun run generate && vitest run",
+    "dev": "bun run generate && wrangler dev",
+    "deploy": "bun run generate && wrangler deploy --config wrangler.deploy.jsonc"
+  },
+  "dependencies": {
+    "agents": "0.20.1",
+    "unpdf": "^1.3.2"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.13.4",
+    "@cloudflare/workers-types": "^4.20260317.1",
+    "@types/react": "^19.2.17",
+    "typescript": "^5.9.3",
+    "vitest": "4.1.1",
+    "wrangler": "^4.77.0"
+  }
+}

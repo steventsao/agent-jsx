@@ -15,11 +15,13 @@
  *
  *   white --moved--> black --moved--> white     …and both --ended--> over
  *
- * The seats themselves are the UNCHANGED model agents from examples/chess —
- * OpenAI plays white, Gemini plays black. Their contract (serializable turn
- * in, one result-granted onTurn out) already fits a phase child; the only
- * adaptation is at the composition site, where the turn carries `lastError`
- * so an illegal move re-prompts the same seat with the refusal in context.
+ * The seats themselves are SEALED components (./players.tsx, authored via
+ * `agent()`) — OpenAI plays white, Gemini plays black, and each seat's
+ * identity, model, and initial state live inside its own record. Their
+ * contract (serializable turn in, one result-granted onTurn out) already fits
+ * a phase child; the only adaptation is at the composition site, where the
+ * turn carries `lastError` so an illegal move re-prompts the same seat with
+ * the refusal in context.
  *
  * Three refusals, three different owners:
  *   unparseable/illegal move → DOMAIN refuses (lastError; no dispatch; the
@@ -40,7 +42,7 @@ import {
   type ChessSide,
   type ChessState,
 } from "../chess/board.tsx";
-import { GeminiAgent, OpenAIAgent } from "../chess/players.tsx";
+import { GeminiSeat, OpenAISeat } from "./players.tsx";
 import {
   declareGoalTable,
   initGoalState,
@@ -127,9 +129,8 @@ export function declareChessGoal(
       <>
         <Phase name="white" initial on={{ moved: "black", ended: "over" }}>
           {seatTurn && seatTurn.side === "white" ? (
-            <OpenAIAgent
+            <OpenAISeat
               name={`white:${seatTurn.ply}`}
-              side="white"
               turn={seatTurn}
               onTurn={result(seatTurnHandler(store, "white", grant("white")))}
             />
@@ -137,9 +138,8 @@ export function declareChessGoal(
         </Phase>
         <Phase name="black" on={{ moved: "white", ended: "over" }}>
           {seatTurn && seatTurn.side === "black" ? (
-            <GeminiAgent
+            <GeminiSeat
               name={`black:${seatTurn.ply}`}
-              side="black"
               turn={seatTurn}
               onTurn={result(seatTurnHandler(store, "black", grant("black")))}
             />
