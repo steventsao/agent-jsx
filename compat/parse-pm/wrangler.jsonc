@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agent-jsx-parse-pm",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-01-28",
+  "compatibility_flags": [
+    "nodejs_compat",
+    // required by the vitest runner (mirrors the cloudflare-agents repo's own
+    // test wrangler config)
+    "enable_nodejs_tty_module",
+    "enable_nodejs_fs_module",
+    "enable_nodejs_http_modules",
+    "enable_nodejs_perf_hooks_module",
+    "enable_nodejs_v8_module",
+    "enable_nodejs_process_v2"
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "PARSE_PM_AGENT", "class_name": "ParsePmAgent" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ParsePmAgent"] }],
+  // TEST-ONLY values. The deploy config (wrangler.deploy.jsonc) carries no
+  // vars: DEMO_ACCESS_TOKEN and OPENROUTER_API_KEY are `wrangler secret put`
+  // bindings there, and the fake provider flag simply does not exist.
+  "vars": {
+    "DEMO_ACCESS_TOKEN": "parse-pm-test-token",
+    "PARSE_PM_FAKE_PROVIDER": "1"
+  }
+}

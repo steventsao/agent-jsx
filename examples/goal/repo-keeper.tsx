@@ -25,21 +25,23 @@
  *                   run un-finishes itself" inside a finished run — which is
  *                   why `done` is a regular phase with an outgoing edge.
  *
- * The children are deliberately dumb stubs: one class-authored agent whose only
- * job is to report a bare outcome. No model is called anywhere in this example —
+ * The children are deliberately dumb stubs: one `agent()`-authored worker whose
+ * only job is to report a bare outcome. No model is called anywhere in this example —
  * the point under test is the SUPERVISION, and a scripted SimHost world plays
  * the children's outcomes deterministically (see demo.tsx).
  */
 
-import { Agent, compileAgentClass, result } from "../../src/agent-class.tsx";
-import { Phase } from "../../src/agent-component.tsx";
+import { result } from "../../src/agent-class.tsx";
+import { agent, Phase } from "../../src/agent-component.tsx";
 import type { AgentStore } from "../../src/state.ts";
 import type { GoalApi, GoalDispatch, GoalOwnerState } from "./goal-provider.tsx";
 
 // ---------------------------------------------------------------------------
-// The one child agent. Its props ARE its contract: the work it is executing,
-// and the one line back out. NOTHING here knows the graph: no phase names, no
-// edge maps, no global event vocabulary — just `dispatch(outcome)`.
+// The one child agent — a sealed `agent()` capsule: identity, model, and
+// initial state live inside the record. Its props ARE its contract: the work
+// it is executing, and the one line back out. NOTHING here knows the graph:
+// no phase names, no edge maps, no global event vocabulary — just
+// `dispatch(outcome)`.
 
 export interface PhaseWorkerProps {
   /** The work this worker is executing. Serializable input. */
@@ -59,28 +61,23 @@ export interface PhaseWorkerState extends Record<string, unknown> {
   runs: number;
 }
 
-class PhaseWorkerAgent extends Agent<PhaseWorkerState, PhaseWorkerProps> {
-  static agentName = "phase-worker";
-  initialState: PhaseWorkerState = { runs: 0 };
-
-  render() {
-    return this.define({
-      model: "sim/phase-worker",
-      description: "Executes one unit of goal work and reports a bare outcome.",
-      prompt: (
-        <prompt>
-          <sys p={10}>
-            You execute the "{this.props.task}" work of a goal that keeps a repository's
-            dependencies fresh.
-          </sys>
-          <msg p={7}>Report exactly one outcome ("done" or "failed") when the work lands.</msg>
-        </prompt>
-      ),
-    });
-  }
-}
-
-export const PhaseWorker = compileAgentClass(PhaseWorkerAgent);
+export const PhaseWorker = agent<PhaseWorkerProps, PhaseWorkerState>({
+  name: "phase-worker",
+  model: "sim/phase-worker",
+  state: { runs: 0 },
+  description: "Executes one unit of goal work and reports a bare outcome.",
+  props: { task: "assess", onOutcome: () => {} },
+  capabilities: { onOutcome: "result" },
+  render: ({ props }) => (
+    <prompt>
+      <sys p={10}>
+        You execute the "{props.task}" work of a goal that keeps a repository's
+        dependencies fresh.
+      </sys>
+      <msg p={7}>Report exactly one outcome ("done" or "failed") when the work lands.</msg>
+    </prompt>
+  ),
+});
 
 // ---------------------------------------------------------------------------
 // Durable state

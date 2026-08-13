@@ -2,9 +2,9 @@
  * Compile the chess-goal example through the SAME pipeline as examples/chess:
  * discovery over sample states (one per active phase, so both seats are
  * reachable), Flue modules for the root and each seat, and the Cloudflare
- * Think target. The root is a plain `agentComponent`, so unlike chess there
- * are no class→boundary companions to emit here; the seat agents' companions
- * already live in examples/chess/generated.
+ * Think target. The root is a plain `agentComponent` and the seats are sealed
+ * `agent()` components (./players.tsx), so unlike chess there are no
+ * class→boundary companions to emit anywhere.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -17,7 +17,7 @@ import {
   flueProfileExportName,
 } from "../../src/compile/emit-flue.ts";
 import { ChessGoalMatch, goalStateAfterMoves, initialChessGoalState } from "./match.tsx";
-import { GeminiAgent, OpenAIAgent } from "../chess/players.tsx";
+import { GeminiSeat, OpenAISeat } from "./players.tsx";
 
 const root: AgentModule = {
   spec: ChessGoalMatch.spec,
@@ -26,8 +26,8 @@ const root: AgentModule = {
   samples: [{ state: initialChessGoalState }, { state: goalStateAfterMoves(["e2e4"]) }],
 };
 const registry: AgentModule[] = [
-  { spec: OpenAIAgent.spec, exportName: "OpenAIAgent", importPath: "../../chess/players.tsx" },
-  { spec: GeminiAgent.spec, exportName: "GeminiAgent", importPath: "../../chess/players.tsx" },
+  { spec: OpenAISeat.spec, exportName: "OpenAISeat", importPath: "../players.tsx" },
+  { spec: GeminiSeat.spec, exportName: "GeminiSeat", importPath: "../players.tsx" },
 ];
 const graph = discoverAgents(root, registry);
 const rootNode = graph[0]!;

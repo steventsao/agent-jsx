@@ -4,40 +4,34 @@
  *
  *   1. copy the react-free runtime file set (now including src/goal.ts);
  *   2. copy the authored agent files with imports rewritten onto that runtime
- *      (board + seat agents from examples/chess UNCHANGED; goal-provider from
- *      examples/goal; seats + match from examples/chess-goal);
- *   3. emit class→boundary companions for the two seat classes;
- *   4. emit the Cloudflare Think target with the deployment model resolver.
+ *      (board + player prompt from examples/chess UNCHANGED; goal-provider
+ *      from examples/goal; players + seats + match from examples/chess-goal);
+ *   3. emit the Cloudflare Think target with the deployment model resolver.
  *
- * The root is a plain `agentComponent` (no class), so unlike chess there is no
- * root companion to emit.
+ * The root is a plain `agentComponent` and the seats are sealed `agent()`
+ * components, so there are no class→boundary companions to emit at all.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { emitAgentModule } from "../../../src/compile/emit-agent-module.ts";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { emitThink } from "../../../src/compile/emit-think.ts";
 import { discoverAgents, type AgentModule } from "../../../src/compile/graph.ts";
 import { copyAgentComponent, emitRuntimeFiles } from "../../../src/compile/runtime-files.ts";
 import { ChessGoalMatch, goalStateAfterMoves, initialChessGoalState } from "../../../examples/chess-goal/match.tsx";
-import { GeminiAgent, OpenAIAgent } from "../../../examples/chess/players.tsx";
+import { GeminiSeat, OpenAISeat } from "../../../examples/chess-goal/players.tsx";
 
 const src = new URL("../src/", import.meta.url);
 const agents = new URL("./agents/", src);
-const generatedAgents = new URL("./generated/", agents);
 const generated = new URL("./generated/", src);
 const runtime = new URL("./generated/runtime/", src);
 
+// The agents dir is wholly generated; clear it so removed sources (the old
+// class-authored seat files and their compiled companions) cannot linger.
+rmSync(agents, { recursive: true, force: true });
 mkdirSync(agents, { recursive: true });
-mkdirSync(generatedAgents, { recursive: true });
 emitRuntimeFiles(runtime.pathname);
 
-// The seat agents and board come from examples/chess UNCHANGED.
-for (const file of [
-  "board.tsx",
-  "player-prompt.tsx",
-  "openai-chess-player.agent.tsx",
-  "gemini-chess-player.agent.tsx",
-]) {
+// The board and player prompt come from examples/chess UNCHANGED.
+for (const file of ["board.tsx", "player-prompt.tsx"]) {
   copyAgentComponent(
     new URL(`../../../examples/chess/${file}`, import.meta.url),
     new URL(file, agents).pathname,
@@ -63,45 +57,19 @@ copyAgentComponent(
   },
 );
 
-// The chess-goal composition itself.
-for (const file of ["seats.tsx", "match.tsx"]) {
+// The chess-goal composition itself: sealed seats + seats + match.
+for (const file of ["players.tsx", "seats.tsx", "match.tsx"]) {
   copyAgentComponent(
     new URL(`../../../examples/chess-goal/${file}`, import.meta.url),
     new URL(file, agents).pathname,
     "../generated/runtime",
     {
       "../chess/board.tsx": "./board.tsx",
-      "../chess/players.tsx": "./players.tsx",
+      "../chess/player-prompt.tsx": "./player-prompt.tsx",
       "../goal/goal-provider.tsx": "./goal-provider.tsx",
     },
   );
 }
-
-// Seat barrel: only the two seat classes — the goal root is not a class.
-writeFileSync(
-  new URL("players.tsx", agents),
-  `/** GENERATED BARREL. Authored agents live in the adjacent *.agent.tsx files. */
-export { OpenAIAgent } from "./generated/openai-chess-player.compiled.tsx";
-export { GeminiAgent } from "./generated/gemini-chess-player.compiled.tsx";
-`,
-);
-
-writeFileSync(
-  new URL("openai-chess-player.compiled.tsx", generatedAgents),
-  emitAgentModule({
-    sourceImport: "../openai-chess-player.agent.tsx",
-    exportName: "OpenAIAgent",
-    runtimeImport: "../../generated/runtime/agent-class.tsx",
-  }),
-);
-writeFileSync(
-  new URL("gemini-chess-player.compiled.tsx", generatedAgents),
-  emitAgentModule({
-    sourceImport: "../gemini-chess-player.agent.tsx",
-    exportName: "GeminiAgent",
-    runtimeImport: "../../generated/runtime/agent-class.tsx",
-  }),
-);
 
 const root: AgentModule = {
   spec: ChessGoalMatch.spec,
@@ -111,8 +79,8 @@ const root: AgentModule = {
   samples: [{ state: initialChessGoalState }, { state: goalStateAfterMoves(["e2e4"]) }],
 };
 const graph = discoverAgents(root, [
-  { spec: OpenAIAgent.spec, exportName: "OpenAIAgent", importPath: "../agents/players.tsx" },
-  { spec: GeminiAgent.spec, exportName: "GeminiAgent", importPath: "../agents/players.tsx" },
+  { spec: OpenAISeat.spec, exportName: "OpenAISeat", importPath: "../agents/players.tsx" },
+  { spec: GeminiSeat.spec, exportName: "GeminiSeat", importPath: "../agents/players.tsx" },
 ]);
 const rootNode = graph[0]!;
 const think = emitThink(
