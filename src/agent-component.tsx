@@ -62,12 +62,12 @@ import type {
  * always saw. The lowercase `<phase>` remains valid as the host-layer
  * representation (goal providers re-emit it when re-declaring phases).
  *
- * `children` is declared with THIS module's ReactNode so the react-free
- * runtime copy (which rewrites ReactNode → unknown) accepts data elements,
- * exactly like the `phase` intrinsic entry in the data JSX runtime.
+ * `children` is declared with this module's ReactNode for normal authoring.
+ * The cast keeps the transparent host node typed as PhaseProps after the
+ * react-free runtime copy widens ReactNode to unknown.
  */
 export function Phase(props: Omit<PhaseProps, "children"> & { children?: ReactNode }): ReactNode {
-  return <phase {...props} />;
+  return <phase {...(props as PhaseProps)} />;
 }
 
 /** What a child agent's implementation receives at runtime. `emit` is the
