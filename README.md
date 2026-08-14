@@ -33,36 +33,67 @@ Use React's automatic JSX runtime for `.tsx` files:
 
 ## Example
 
-Define a sealed worker, then grant its result to a durable supervisor:
+An agent is an ordinary PascalCase function component — direct props in, a
+direct JSX return — with its durable identity, model, and initial state
+declared in an explicit `profile` beside it:
 
 ```tsx
-import { result } from "@steventsao/agent-jsx/agent";
-import { agent } from "@steventsao/agent-jsx/agent-component";
+// researcher.agent.tsx
+import { defineAgentProfile } from "@steventsao/agent-jsx/agent-component";
 
 interface ResearcherProps {
   question: string;
   onAnswer: (answer: string) => void;
 }
 
-const Researcher = agent<ResearcherProps, { runs: number }>({
+export const profile = defineAgentProfile<ResearcherProps, { runs: number }>({
   name: "researcher",
   model: "openrouter/openai/gpt-5-mini",
-  state: { runs: 0 },
-  props: { question: "", onAnswer: () => {} },
+  initialState: { runs: 0 },
+  sampleProps: { question: "", onAnswer: () => {} },
   capabilities: { onAnswer: "result" },
-  render: ({ props }) => (
-    <prompt>
-      <sys p={10}>Answer with one concise finding.</sys>
-      <msg p={7}>{props.question}</msg>
-    </prompt>
-  ),
 });
 
-export const ResearchTeam = agent<{}, { answer: string | null }>({
+export default function Researcher({ question }: ResearcherProps) {
+  return (
+    <prompt>
+      <sys p={10}>Answer with one concise finding.</sys>
+      <msg p={7}>{question}</msg>
+    </prompt>
+  );
+}
+```
+
+That is the whole authored file. The compiler owns the boundary: it generates
+a tiny companion that re-exports `Researcher` under the same name, lowered
+through `compileAgent(...)` — that is the import composition sites use:
+
+```tsx
+// generated/researcher.compiled.tsx — generated, do not edit
+import ResearcherDefinition, { profile } from "../researcher.agent.tsx";
+import { compileAgent } from "@steventsao/agent-jsx/agent-component";
+
+export const Researcher = compileAgent(ResearcherDefinition, profile);
+```
+
+`emitAgentModule({ mode: "function", ... })` produces this companion; see the
+[goal generator](examples/goal/generate.tsx) for a complete invocation. A
+supervisor is the same authored shape with `model` omitted:
+
+```tsx
+// research-team.agent.tsx
+import { result } from "@steventsao/agent-jsx/agent";
+import { defineAgentProfile, type AgentRenderProps } from "@steventsao/agent-jsx/agent-component";
+import { Researcher } from "./generated/researcher.compiled.tsx";
+
+export const profile = defineAgentProfile<{}, { answer: string | null }>({
   name: "research-team",
-  state: { answer: null },
-  props: {},
-  render: ({ store }) => (
+  initialState: { answer: null },
+  sampleProps: {},
+});
+
+export default function ResearchTeam({ store }: AgentRenderProps<{}, { answer: string | null }>) {
+  return (
     <Researcher
       name="researcher:primary"
       question="What changed in the latest release?"
@@ -70,13 +101,15 @@ export const ResearchTeam = agent<{}, { answer: string | null }>({
         store.set((state) => ({ ...state, answer })),
       )}
     />
-  ),
-});
+  );
+}
 ```
 
 The contract is deliberately small:
 
-- `agent()` seals reusable identity, model, initial state, and prompt.
+- The component is ordinary React grammar: direct props in, JSX out.
+- The profile seals reusable identity, model, initial state, and metadata —
+  explicit, never inferred from the export or filename.
 - `name` identifies a mounted durable instance.
 - Plain props are serializable input.
 - Function props cross only through an explicit grant such as `result(...)`.
@@ -91,9 +124,15 @@ approval gate.
 
 ```sh
 bun install --frozen-lockfile
-bun run ci
+bun run test:all
 ```
 
+The full gate runs the package checks, fixture byte-lock, examples, and all
+seven compatibility packages serially, then prints one summary. Its example
+suite runs in a disposable copy, so generator drift is reported without
+writing to the working tree. Use `bun run ci` while iterating on the root
+package only.
+
 The compatibility suites execute generated code against pinned Cloudflare
-runtimes in workerd. See [COMPAT.md](COMPAT.md) for the supported contracts and
+runtimes in workerd. See [COMPAT.md](COMPAT.md) for supported contracts and
 [CONTRIBUTING.md](CONTRIBUTING.md) for release workflow details.

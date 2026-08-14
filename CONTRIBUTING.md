@@ -9,6 +9,16 @@ bun install --frozen-lockfile
 bun run ci
 ```
 
+Before pushing a repository-wide change, run the complete serial gate:
+
+```sh
+bun run test:all
+```
+
+It covers the root package, fixture byte-lock, examples, and every compatibility
+package, then prints a single summary. Compatibility dependencies are installed
+from their frozen lockfiles as part of the gate.
+
 Target adapters have integration suites in `compat/`. Run the affected suite when changing compiler output or a target contract; for example:
 
 ```sh

@@ -21,7 +21,11 @@ bun run package:check
 
 `bun run ci` runs all three. `package:check` builds JavaScript and declarations, runs publint and Are the Types Wrong, packs the package, and imports every public entrypoint with Node.js.
 
-The compatibility suites are the integration source of truth. If a change touches an emitter or target contract, run the affected suite under `compat/<target>`. CI runs chess, Cloudflare Agents, document review, Flue, both PDF targets, and Cloudflare Think independently.
+Before handing off a repository-wide change, run `bun run test:all`. It runs the
+package gate, fixture byte-lock, examples, and every compatibility suite
+serially, then prints one summary table.
+
+The compatibility suites are the integration source of truth. If a change touches an emitter or target contract, run the affected suite under `compat/<target>`. CI runs chess, chess-goal, Cloudflare Agents, document review, parse-pm, compiled PDF, and Cloudflare Think independently.
 
 ## Semver and changesets
 

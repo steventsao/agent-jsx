@@ -16,6 +16,7 @@
  */
 
 import { cpSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { emitAgentModule } from "../../../src/compile/emit-agent-module.ts";
 import { copyAgentComponent, emitRuntimeFiles } from "../../../src/compile/runtime-files.ts";
 
 const src = new URL("../src/", import.meta.url);
@@ -68,6 +69,7 @@ const PARSE_PM_REWRITES: Record<string, string> = {
 for (const file of [
   "ports.ts",
   "fake-provider.ts",
+  "region-extractor.agent.tsx",
   "region-extractor.tsx",
   "parse-agent.tsx",
   "drive.ts",
@@ -79,5 +81,19 @@ for (const file of [
     PARSE_PM_REWRITES,
   );
 }
+
+// Re-emit the compiler-owned function→boundary companion against the copied
+// runtime (the barrel at agents/region-extractor.tsx resolves ./generated/).
+const generatedAgents = new URL("./generated/", agents);
+mkdirSync(generatedAgents, { recursive: true });
+writeFileSync(
+  new URL("region-extractor.compiled.tsx", generatedAgents),
+  emitAgentModule({
+    sourceImport: "../region-extractor.agent.tsx",
+    exportName: "RegionExtractor",
+    runtimeImport: "../../generated/runtime/agent-component.tsx",
+    mode: "function",
+  }),
+);
 
 console.log("generated react-free parse-pm agents + goal runtime + domain spec");

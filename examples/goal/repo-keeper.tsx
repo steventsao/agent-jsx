@@ -25,59 +25,27 @@
  *                   run un-finishes itself" inside a finished run — which is
  *                   why `done` is a regular phase with an outgoing edge.
  *
- * The children are deliberately dumb stubs: one `agent()`-authored worker whose
+ * The children are deliberately dumb stubs: one authored function-component worker whose
  * only job is to report a bare outcome. No model is called anywhere in this example —
  * the point under test is the SUPERVISION, and a scripted SimHost world plays
  * the children's outcomes deterministically (see demo.tsx).
  */
 
 import { result } from "../../src/agent-class.tsx";
-import { agent, Phase } from "../../src/agent-component.tsx";
+import { Phase } from "../../src/agent-component.tsx";
 import type { AgentStore } from "../../src/state.ts";
+import { PhaseWorker } from "./generated/phase-worker.compiled.tsx";
 import type { GoalApi, GoalDispatch, GoalOwnerState } from "./goal-provider.tsx";
 
+export type { PhaseWorkerProps, PhaseWorkerState } from "./phase-worker.agent.tsx";
+
 // ---------------------------------------------------------------------------
-// The one child agent — a sealed `agent()` capsule: identity, model, and
-// initial state live inside the record. Its props ARE its contract: the work
-// it is executing, and the one line back out. NOTHING here knows the graph:
-// no phase names, no edge maps, no global event vocabulary — just
-// `dispatch(outcome)`.
-
-export interface PhaseWorkerProps {
-  /** The work this worker is executing. Serializable input. */
-  task: string;
-  /**
-   * The bare, child-local outcome this worker reports when its work lands
-   * (`"done"` or `"failed"`). Granted at the composition site as
-   * `result(dispatchFor(phase, child))` — never a bare function. The child
-   * never holds the closure; the host invokes the parent-side sink when the
-   * child's work completes, the provider stamps the SOURCE it minted the grant
-   * with, and only the ROUTE survives hibernation.
-   */
-  onOutcome: (outcome: string) => void;
-}
-
-export interface PhaseWorkerState extends Record<string, unknown> {
-  runs: number;
-}
-
-export const PhaseWorker = agent<PhaseWorkerProps, PhaseWorkerState>({
-  name: "phase-worker",
-  model: "sim/phase-worker",
-  state: { runs: 0 },
-  description: "Executes one unit of goal work and reports a bare outcome.",
-  props: { task: "assess", onOutcome: () => {} },
-  capabilities: { onOutcome: "result" },
-  render: ({ props }) => (
-    <prompt>
-      <sys p={10}>
-        You execute the "{props.task}" work of a goal that keeps a repository's
-        dependencies fresh.
-      </sys>
-      <msg p={7}>Report exactly one outcome ("done" or "failed") when the work lands.</msg>
-    </prompt>
-  ),
-});
+// The one child agent — authored as function + profile in
+// ./phase-worker.agent.tsx and composed here through its compiler-owned
+// companion (./generated/phase-worker.compiled.tsx) under the same public
+// JSX name. Its props ARE its contract: the work it is executing, and the
+// one line back out. NOTHING there knows the graph: no phase names, no edge
+// maps, no global event vocabulary — just `dispatch(outcome)`.
 
 // ---------------------------------------------------------------------------
 // Durable state

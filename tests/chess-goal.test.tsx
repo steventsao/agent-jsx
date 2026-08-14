@@ -110,8 +110,9 @@ describe("chess goal composition — only the active phase's seat mounts", () =>
     expect(seat.name).toBe("white:0");
     expect(seat.config.kind).toBe("openai-chess-player");
     // Serializable seat input only: no phase names, no edge maps, no vocabulary
-    // — and no model/identity sprinkles either; the seat is a sealed agent()
-    // capsule, so the side lives in the turn and the model lives in the record.
+    // — and no model/identity sprinkles either; the seat is a sealed
+    // function+profile capsule, so the side lives in the turn and the model
+    // lives in the record.
     expect(Object.keys(seat.config).sort()).toEqual(["kind", "turn"]);
     expect(seat.config.turn).toMatchObject({ side: "white", ply: 0, lastError: null });
     expect(seat.bindings).toEqual({ onTurn: { kind: "result" } });

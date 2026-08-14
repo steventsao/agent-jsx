@@ -119,8 +119,8 @@ defineAgentProfile<Record<string, never>, Record<string, never>>({
   initialState: {},
 });
 
-// @ts-expect-error source profiles never infer model policy.
+// A supervising profile simply omits the model.
 defineAgentProfile<Record<string, never>, Record<string, never>>({
-  name: "missing-model",
+  name: "supervisor",
   initialState: {},
 });

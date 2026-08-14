@@ -40,13 +40,6 @@ import type { ReactNode } from "react";
 import type { AgentStore } from "./store.ts";
 import { createStore, getOutputs } from "./store.ts";
 import { callableRefDeclaration } from "./callable.ts";
-import {
-  agentDefinitionBrand,
-  createAgentDefinition,
-  normalizeAgentDefinition,
-  type AgentDefinition,
-  type AgentDefinitionInput,
-} from "./agent-definition.tsx";
 import type {
   AgentSkillSource,
   AgentToolSet,
@@ -256,14 +249,15 @@ export type AgentSpec<
  * compiler supplies the reusable boundary wrapper and target-specific class.
  *
  * Identity and model selection remain authored policy. The compiler does not
- * infer either from an export or filename.
+ * infer either from an export or filename. `model` is OPTIONAL: a supervising
+ * agent (durable state + children, no model definition) simply omits it.
  */
 export type AgentProfile<
   P extends object = any,
   S extends Record<string, unknown> = any,
   O = unknown,
 > = Omit<AgentSpecBase<P, S, O>, "agentName" | "impl"> &
-  { name: string; model: string } &
+  { name: string; model?: string } &
   ProfileCapabilityRequirement<P>;
 
 /** Type-check an authored profile without turning the implementation into a
@@ -273,7 +267,14 @@ export function defineAgentProfile<
   S extends Record<string, unknown>,
   O = unknown,
 >(profile: AgentProfile<P, S, O>): AgentProfile<P, S, O> {
+  assertProfileName(profile.name);
   return profile;
+}
+
+function assertProfileName(name: unknown): asserts name is string {
+  if (typeof name !== "string" || !name.trim()) {
+    throw new Error("[agent-jsx] agent profile needs a non-empty durable `name`");
+  }
 }
 
 /** Erased spec shape used by heterogeneous compiler graphs. */
@@ -474,12 +475,17 @@ function parseCapabilityValue(
 }
 
 /**
- * Compiler lowering for a normal component + AgentProfile source module.
+ * Compiler lowering for a normal PascalCase component + AgentProfile source
+ * module.
  *
  * Application code should normally get this call from a generated companion
  * module (see compile/emit-agent-module.ts). Keeping the lowering here makes
  * the generated file tiny and preserves one boundary implementation for the
  * simulator, Cloudflare, and Flue targets.
+ *
+ * The authored function returns its prompt/composition JSX directly. The
+ * profile declares the durable metadata and authority contract; the generated
+ * companion keeps the function's own tree behind a durable boundary.
  */
 export function compileAgent<
   P extends object,
@@ -489,6 +495,7 @@ export function compileAgent<
   impl: AgentImpl<P, S, O>,
   profile: AgentProfile<P, S, O>
 ): AgentClass<P, S, O> {
+  assertProfileName(profile.name);
   const agentName = profile.name;
 
   const { name: _profileName, capabilities: sourceCapabilities, ...metadata } = profile as
@@ -678,216 +685,4 @@ export function agentComponent<
   Object.defineProperty(Boundary, "name", { value: spec.agentName });
   Object.defineProperty(Boundary, "__agentContract", { value: null });
   return Boundary as AgentClass<P, S, O>;
-}
-
-// ---------------------------------------------------------------------------
-// `agent()` — the sealed authoring factory (cloudflare/agents shape).
-//
-// In cloudflare/agents the CLASS is the capsule: the class name is the binding
-// identity, `initialState` lives on the class, and model usage is internal.
-// `agent()` gives agent-jsx the same capsule as one factory call: durable
-// identity (`name`), the default `model`, and initial durable `state` are
-// sealed at AUTHORING time, so a composition site carries only the instance
-// `name` plus domain input and granted capabilities — never model/identity
-// plumbing. It lowers to the exact `agentComponent` record every consumer
-// (discovery, collectPhases, the emitters, the SimHost) already speaks.
-
-/** What an `agent()` render receives each evaluation. */
-export interface AgentRenderContext<
-  P extends object,
-  S extends Record<string, unknown>,
-  O = unknown,
-> {
-  /** The boundary's input: serializable props plus granted capabilities. */
-  props: P;
-  /** Current durable state — a plain read of `store.get()`. Live-React roots
-   *  that need subscription semantics call `useAgentState(ctx.store)` from
-   *  `src/state.ts` instead, exactly as low-level impls do today. */
-  state: S;
-  store: AgentStore<S>;
-  /** Continuation output channel (see AgentRenderProps.emit). */
-  emit?: (output: O) => void | Promise<void>;
-  /** Brand an explicit definition. The spec's sealed model/description/
-   *  displayName/schemas are the DEFAULTS; an explicit field here overrides. */
-  define: (definition: AgentFactoryDefinition<P, O>) => AgentDefinition<P, O>;
-}
-
-/** `ctx.define` input: `model` becomes optional because the factory's sealed
- *  model is the default. Defining without either is a loud error. */
-export type AgentFactoryDefinition<P extends object, O = unknown> = Omit<
-  AgentDefinitionInput<P, O>,
-  "model"
-> & { model?: string };
-
-interface AgentFactorySpecBase<
-  P extends object,
-  S extends Record<string, unknown>,
-  O,
-> {
-  /** Durable class identity — compiles to the same place the static
-   *  `agentName` went (class name / DO binding / profile name). */
-  name: string;
-  /** Default model, sealed at authoring time. OPTIONAL: a supervising agent
-   *  (durable state + children, no model definition) simply omits it. */
-  model?: string;
-  /** Initial durable state, sealed on the component record. */
-  state: S;
-  /** Discovery sample — the role `sampleProps` plays on `agentComponent`.
-   *  Callback props should be no-ops. */
-  props?: P;
-  description?: string;
-  displayName?: string;
-  inputSchema?: BoundarySchema;
-  outputSchema?: BoundarySchema<O>;
-  sampleOutput?: O;
-  toolSlot?: boolean;
-  getPrompt?: (state: S) => string;
-  skills?: readonly AgentSkillSource[];
-  mcpServers?: McpServerDefinitions;
-  /**
-   * The implementation. Returning plain prompt/composition JSX uses the sealed
-   * spec fields as the agent's whole definition (the common case). Returning
-   * `ctx.define({...})` declares the definition explicitly — sealed fields are
-   * the defaults, explicit fields override — and the definition's prompt/tools
-   * become the rendered tree.
-   */
-  render: (ctx: AgentRenderContext<P, S, O>) => ReactNode | AgentDefinition<P, O>;
-}
-
-/** Factory spec plus grant-kind metadata for every function prop — the same
- *  vocabulary as today (`"callback" | "method" | "result"`, concise string or
- *  `{ kind }` form). */
-export type AgentFactorySpec<
-  P extends object,
-  S extends Record<string, unknown>,
-  O = unknown,
-> = AgentFactorySpecBase<P, S, O> & ProfileCapabilityRequirement<P>;
-
-function isBrandedDefinition(value: unknown): value is AgentDefinition<any, any> {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as Record<PropertyKey, unknown>)[agentDefinitionBrand] === true
-  );
-}
-
-/**
- * Declare a sealed agent component. Identity, model, and initial state are
- * encapsulated here; the returned component is the same branded `AgentClass`
- * record `agentComponent` produces, so every existing consumer works
- * unchanged. Composition sites pass only `name` + domain props + grants.
- */
-export function agent<
-  P extends object,
-  S extends Record<string, unknown>,
-  O = unknown,
->(spec: AgentFactorySpec<P, S, O>): AgentClass<P, S, O> {
-  const {
-    name,
-    model,
-    state: initialState,
-    props: sampleProps,
-    render,
-    capabilities: sourceCapabilities,
-    ...metadata
-  } = spec as AgentFactorySpecBase<P, S, O> & {
-    capabilities?: Record<string, AgentProfileCapabilityDeclaration>;
-  };
-  if (typeof name !== "string" || !name.trim()) {
-    throw new Error("[agent-jsx] agent() needs a non-empty durable `name`");
-  }
-  // Normalize the concise `onTurn: "result"` spelling to `{ kind }` — the same
-  // lowering compileAgent applies to profile capabilities.
-  const capabilities = sourceCapabilities
-    ? Object.fromEntries(
-        Object.entries(sourceCapabilities).map(([key, declaration]) => [
-          key,
-          typeof declaration === "string" ? { kind: declaration } : declaration,
-        ]),
-      )
-    : undefined;
-
-  // Sealed defaults for ctx.define — the factory fields, merged UNDER any
-  // explicit definition fields so an explicit value overrides.
-  const sealedDefaults: Partial<AgentDefinitionInput<P, O>> = {
-    ...(model !== undefined ? { model } : {}),
-    ...(metadata.description !== undefined ? { description: metadata.description } : {}),
-    ...(metadata.displayName !== undefined ? { displayName: metadata.displayName } : {}),
-    ...(metadata.inputSchema !== undefined
-      ? { inputSchema: metadata.inputSchema as AgentDefinitionInput<P, O>["inputSchema"] }
-      : {}),
-    ...(metadata.outputSchema !== undefined ? { outputSchema: metadata.outputSchema } : {}),
-    ...(metadata.skills !== undefined ? { skills: metadata.skills } : {}),
-    ...(metadata.mcpServers !== undefined ? { mcpServers: metadata.mcpServers } : {}),
-  };
-
-  let lowered: AgentSpec<P, S, O>;
-
-  // When render declares its definition via ctx.define, the FIRST resolved
-  // definition is written back onto the spec (an explicit override wins over
-  // the sealed default — discovery/analysis evaluate the render before any
-  // emit reads the metadata), and later renders must agree on the static
-  // fields — the compileAgentClass invariance, factory-shaped.
-  let sealed: { model?: string; description?: string; displayName?: string } | undefined;
-  const seal = (definition: ResolvedAgentDefinition): void => {
-    const next = {
-      model: definition.model,
-      description: definition.description,
-      displayName: definition.displayName,
-    };
-    if (!sealed) {
-      sealed = next;
-      lowered.model = definition.model;
-      lowered.description = definition.description;
-      lowered.displayName = definition.displayName;
-      lowered.inputSchema = definition.inputSchema;
-      lowered.outputSchema = definition.outputSchema as AgentSpec<P, S, O>["outputSchema"];
-      lowered.skills = definition.skills;
-      lowered.mcpServers = definition.mcpServers;
-      return;
-    }
-    for (const key of ["model", "description", "displayName"] as const) {
-      if (sealed[key] !== next[key]) {
-        throw new Error(
-          `[agent-jsx] agent "${name}": definition field "${key}" changed between renders`,
-        );
-      }
-    }
-  };
-
-  const impl: AgentImpl<P, S, O> = (renderProps) => {
-    const { store, emit, ...rest } = renderProps as AgentRenderProps<P, S, O> &
-      Record<string, unknown> & { store: AgentStore<S> };
-    const ctx: AgentRenderContext<P, S, O> = {
-      props: rest as unknown as P,
-      get state() {
-        return store.get();
-      },
-      store,
-      emit: emit as AgentRenderContext<P, S, O>["emit"],
-      define: (definition) =>
-        createAgentDefinition({
-          ...sealedDefaults,
-          ...definition,
-        } as AgentDefinitionInput<P, O>),
-    };
-    const rendered = render(ctx);
-    if (isBrandedDefinition(rendered)) {
-      const definition = normalizeAgentDefinition(rendered, name);
-      seal(definition);
-      return definition.tree;
-    }
-    return rendered as ReactNode;
-  };
-
-  lowered = {
-    agentName: name,
-    initialState,
-    impl,
-    ...(model !== undefined ? { model } : {}),
-    ...metadata,
-    ...(sampleProps !== undefined ? { sampleProps } : {}),
-    ...(capabilities ? { capabilities } : {}),
-  } as unknown as AgentSpec<P, S, O>;
-  return agentComponent(lowered);
 }
