@@ -105,6 +105,87 @@ export default function ResearchTeam({ store }: AgentRenderProps<{}, { answer: s
 }
 ```
 
+### State drives the tree
+
+Agent state is declarative too. Read it with `useAgentState`, update it with
+`store.set` (the durable equivalent of `setState`), and return the tools and
+prompt that should exist for that state:
+
+```tsx
+// draft-agent.agent.tsx
+import {
+  defineAgentProfile,
+  type AgentRenderProps,
+} from "@agent-jsx/core/agent-component";
+import { useAgentState } from "@agent-jsx/core/state";
+
+interface DraftProps {
+  topic: string;
+}
+
+interface DraftState extends Record<string, unknown> {
+  mode: "draft" | "review";
+}
+
+export const profile = defineAgentProfile<DraftProps, DraftState>({
+  name: "draft-agent",
+  model: "openrouter/openai/gpt-5-mini",
+  initialState: { mode: "draft" },
+  sampleProps: { topic: "Why are typed agent boundaries useful?" },
+});
+
+export default function DraftAgent({
+  topic,
+  store,
+}: AgentRenderProps<DraftProps, DraftState>) {
+  const { mode } = useAgentState(store);
+  const setMode = (next: DraftState["mode"]) =>
+    store.set((state) => ({ ...state, mode: next }));
+
+  if (mode === "draft") {
+    return (
+      <>
+        <tool
+          name="submit-draft"
+          description="Submit the current draft for review."
+          run={() => {
+            setMode("review");
+            return "Draft submitted.";
+          }}
+        />
+        <prompt>
+          <sys p={10}>Draft a concise answer, then call submit-draft.</sys>
+          <msg p={7}>{topic}</msg>
+        </prompt>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <tool
+        name="request-revision"
+        description="Return the answer for another drafting pass."
+        run={() => {
+          setMode("draft");
+          return "Revision requested.";
+        }}
+      />
+      <prompt>
+        <sys p={10}>Review the answer critically before accepting it.</sys>
+        <msg p={7}>{topic}</msg>
+      </prompt>
+    </>
+  );
+}
+```
+
+Calling `submit-draft` persists `mode: "review"`. The next render removes that
+tool, adds `request-revision`, and replaces the drafting prompt with the review
+prompt. `useAgentState` subscribes during React development and reads the same
+durable store in compiled runtimes. Ordinary React `useState` is local and is
+not durable agent state.
+
 The contract is deliberately small:
 
 - The component is ordinary React grammar: direct props in, JSX out.
