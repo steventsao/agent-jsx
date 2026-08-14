@@ -20,6 +20,7 @@ import type {
 } from "./types.ts";
 
 export const Fragment: unique symbol = Symbol.for("react.fragment") as never;
+// Stable cross-package protocol key retained across the npm namespace rename.
 export const dataElementBrand: unique symbol = Symbol.for(
   "@steventsao/agent-jsx/data-element",
 ) as never;

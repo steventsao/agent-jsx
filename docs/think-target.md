@@ -68,7 +68,7 @@ Model ids remain explicit in source. When a provider needs its own package or
 secret, the emitter can import deployment glue:
 
 ```ts
-import { emitThink } from "@steventsao/agent-jsx/compile/cloudflare";
+import { emitThink } from "@agent-jsx/core/compile/cloudflare";
 
 emitThink(root, children, analysis, {
   modelResolver: {

@@ -138,6 +138,13 @@ describe("normal agent source modules", () => {
         exportName: "Worker",
         mode: "function",
       }),
-    ).toContain('from "@steventsao/agent-jsx/agent-component"');
+    ).toContain('from "@agent-jsx/core/agent-component"');
+
+    expect(
+      emitAgentModule({
+        sourceImport: "./worker.agent.js",
+        exportName: "Worker",
+      }),
+    ).toContain('from "@agent-jsx/core/agent"');
   });
 });

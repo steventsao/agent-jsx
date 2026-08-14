@@ -30,7 +30,7 @@ bun run test
 
 ## Package changes
 
-If a pull request changes behavior exposed by `@steventsao/agent-jsx`, add a release note before opening the pull request:
+If a pull request changes behavior exposed by `@agent-jsx/core`, add a release note before opening the pull request:
 
 ```sh
 bun run changeset

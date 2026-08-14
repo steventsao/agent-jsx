@@ -2,7 +2,7 @@
   "mode": "pre",
   "tag": "alpha",
   "initialVersions": {
-    "@steventsao/agent-jsx": "0.0.0"
+    "@agent-jsx/core": "0.1.0-alpha.0"
   },
   "changesets": [
     "tidy-pandas-compile"

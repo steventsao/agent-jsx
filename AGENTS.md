@@ -29,13 +29,13 @@ The compatibility suites are the integration source of truth. If a change touche
 
 ## Semver and changesets
 
-The public package is `@steventsao/agent-jsx`. It is in alpha prerelease mode and follows SemVer:
+The public package is `@agent-jsx/core`. It is in alpha prerelease mode and follows SemVer:
 
 - Patch: backward-compatible bug fix.
 - Minor: backward-compatible feature. While the package is `0.x`, use a minor bump for a breaking API change.
 - Major: stable-era breaking change; do not use this during the alpha line without maintainer direction.
 
-Every pull request with a user-visible package change must add a changeset with `bun run changeset`. Choose `@steventsao/agent-jsx`, select the impact, and write a concise changelog sentence. Tests, examples, documentation, and CI-only changes do not require one. See [.changeset/README.md](.changeset/README.md) for the contributor-facing summary.
+Every pull request with a user-visible package change must add a changeset with `bun run changeset`. Choose `@agent-jsx/core`, select the impact, and write a concise changelog sentence. Tests, examples, documentation, and CI-only changes do not require one. See [.changeset/README.md](.changeset/README.md) for the contributor-facing summary.
 
 Never edit the package version or `CHANGELOG.md` by hand. The Changesets release workflow owns both. While `.changeset/pre.json` is in `alpha` mode, release pull requests produce versions such as `0.1.0-alpha.0` and `0.1.0-alpha.1`, and publish them to npm's `alpha` dist-tag. Because the package has not had a normal release yet, npm also retains `latest` on the newest alpha; the first stable release will take ownership of `latest`.
 
@@ -48,7 +48,8 @@ Never edit the package version or `CHANGELOG.md` by hand. The Changesets release
 
 To promote the project out of alpha, make a dedicated pull request that runs `bun run changeset pre exit`; do not delete or edit `pre.json` manually.
 
-The package's npm trusted publisher is configured as:
+After `@agent-jsx/core` is bootstrapped on npm, configure its trusted publisher
+as:
 
 - GitHub owner: `steventsao`
 - Repository: `agent-jsx`
@@ -56,4 +57,8 @@ The package's npm trusted publisher is configured as:
 - Environment: `npm`
 - Allowed action: `npm publish`
 
-Do not add an `NPM_TOKEN` publish secret. The workflow uses GitHub OIDC and npm provenance automatically.
+The former package's trusted-publisher relationship does not transfer to the
+new npm identity. Until the new relationship is configured, the release
+workflow cannot publish `@agent-jsx/core`. Do not add an `NPM_TOKEN` publish
+secret; once configured, the workflow uses GitHub OIDC and npm provenance
+automatically.

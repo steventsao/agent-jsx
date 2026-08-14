@@ -40,8 +40,8 @@ export function emitAgentModule(options: AgentModuleEmitOptions): string {
   const runtimeImport =
     options.runtimeImport ??
     (mode === "function"
-      ? "@steventsao/agent-jsx/agent-component"
-      : "agent-jsx/agent");
+      ? "@agent-jsx/core/agent-component"
+      : "@agent-jsx/core/agent");
   assertIdentifier(options.exportName, "exportName");
 
   if (mode === "function") {

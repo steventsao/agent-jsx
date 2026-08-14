@@ -17,7 +17,7 @@ explicitly as typed props.
 ## Install
 
 ```sh
-bun add @steventsao/agent-jsx@alpha react@^19
+bun add @agent-jsx/core@alpha react@^19
 ```
 
 Use React's automatic JSX runtime for `.tsx` files:
@@ -39,7 +39,7 @@ declared in an explicit `profile` beside it:
 
 ```tsx
 // researcher.agent.tsx
-import { defineAgentProfile } from "@steventsao/agent-jsx/agent-component";
+import { defineAgentProfile } from "@agent-jsx/core/agent-component";
 
 interface ResearcherProps {
   question: string;
@@ -71,7 +71,7 @@ through `compileAgent(...)` — that is the import composition sites use:
 ```tsx
 // generated/researcher.compiled.tsx — generated, do not edit
 import ResearcherDefinition, { profile } from "../researcher.agent.tsx";
-import { compileAgent } from "@steventsao/agent-jsx/agent-component";
+import { compileAgent } from "@agent-jsx/core/agent-component";
 
 export const Researcher = compileAgent(ResearcherDefinition, profile);
 ```
@@ -82,8 +82,8 @@ supervisor is the same authored shape with `model` omitted:
 
 ```tsx
 // research-team.agent.tsx
-import { result } from "@steventsao/agent-jsx/agent";
-import { defineAgentProfile, type AgentRenderProps } from "@steventsao/agent-jsx/agent-component";
+import { result } from "@agent-jsx/core/agent";
+import { defineAgentProfile, type AgentRenderProps } from "@agent-jsx/core/agent-component";
 import { Researcher } from "./generated/researcher.compiled.tsx";
 
 export const profile = defineAgentProfile<{}, { answer: string | null }>({
