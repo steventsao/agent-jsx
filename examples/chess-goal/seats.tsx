@@ -15,9 +15,10 @@
  *
  *   white --moved--> black --moved--> white     …and both --ended--> over
  *
- * The seats themselves are SEALED components (./players.tsx, authored via
- * `agent()`) — OpenAI plays white, Gemini plays black, and each seat's
- * identity, model, and initial state live inside its own record. Their
+ * The seats themselves are SEALED components (./players.tsx — a barrel over
+ * compiler-owned companions; authored as function + profile in
+ * ./*-seat.agent.tsx) — OpenAI plays white, Gemini plays black, and each
+ * seat's identity, model, and initial state live inside its own record. Their
  * contract (serializable turn in, one result-granted onTurn out) already fits
  * a phase child; the only adaptation is at the composition site, where the
  * turn carries `lastError` so an illegal move re-prompts the same seat with

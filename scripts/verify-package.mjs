@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 
 const entrypoints = [
   ["@steventsao/agent-jsx/agent", ["Agent", "callable", "compileAgentClass", "composeAgent", "result"]],
-  ["@steventsao/agent-jsx/agent-component", ["Agent", "agent", "agentComponent", "compileAgent"]],
+  ["@steventsao/agent-jsx/agent-component", ["Agent", "agentComponent", "compileAgent", "defineAgentProfile"]],
   ["@steventsao/agent-jsx/compile/emit-agent-module", ["emitAgentModule"]],
   ["@steventsao/agent-jsx/compile/cloudflare", [
     "analyzeAgent",

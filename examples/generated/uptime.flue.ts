@@ -14,10 +14,11 @@ import { createStore, withOutputs } from "../../src/store.ts";
 import { UptimeAgent } from "../uptime-agent.tsx";
 import { investigatorProfile } from "./investigator.flue.ts";
 
+
 // State + props derived structurally from the component spec (no state-type
 // string, no per-emit propsJson): the spec is the single analyzed source.
 type State = typeof UptimeAgent.spec.initialState & Record<string, unknown>;
-const PROPS = {"sites":["https://a.example","https://b.example","https://c.example"]} as const;
+const PROPS = {"sites":["https://a.example","https://b.example","https://c.example"]};
 
 // defineAgent's initializer returns an AgentRuntimeConfig (model/instructions/
 // tools/subagents/…). No `name` field — flue derives the agent name from the
@@ -25,7 +26,7 @@ const PROPS = {"sites":["https://a.example","https://b.example","https://c.examp
 export default defineAgent(() => ({
   model: "openrouter/google/gemini-3.1-flash-lite-preview",
   instructions: "[system] Uptime agent for 3 sites. Open a ticket per incident; skip if one exists.\nhistory: https://a.example routine checks nominal, p95 latency stable.\nhistory: https://b.example routine checks nominal, p95 latency stable.\nhistory: https://c.example routine checks nominal, p95 latency stable.",
-  // Declared subagent profiles are flue's binding table for session.task(..., { agent }).
+  // Explicit subagent/capability roster for session.task(..., { agent }).
   subagents: [investigatorProfile],
 
   // No static tools: the component's <tool> is state-gated (e.g. page-oncall
@@ -59,6 +60,14 @@ export function spawnPlan(state: State) {
     .filter((r) => r.kind === "subagent")
     .map((r) => {
       const { kind, ...input } = r.config;
-      return { stableId: r.name, agent: String(kind), input, emits: "__emit" in r.handlers };
+      return {
+        stableId: r.name,
+        agent: String(kind),
+        input,
+        emits: r.bindings?.__emit?.kind === "continuation",
+        bindings: r.bindings ?? {},
+        resultBinding: Object.entries(r.bindings ?? {}).find(([, b]) => b.kind === "result")?.[0] ?? null,
+        target: r.target ?? null,
+      };
     });
 }

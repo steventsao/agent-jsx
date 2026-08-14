@@ -6,8 +6,9 @@ import {
   type AgentRenderProps,
 } from "../src/agent-component.tsx";
 import { emitAgentModule } from "../src/compile/emit-agent-module.ts";
-import { evaluateComponent } from "../src/compile/evaluate.ts";
+import { evaluateComponent, evaluateTree } from "../src/compile/evaluate.ts";
 import { collectInfra } from "../src/tree.ts";
+import { useAgentState } from "../src/state.ts";
 
 interface SourceProps {
   query: string;
@@ -27,8 +28,16 @@ const profile = defineAgentProfile<SourceProps, SourceState>({
   sampleProps: { query: "sample", onResult: () => {} },
 });
 
-function SourceWorker({ query }: AgentRenderProps<SourceProps, SourceState>) {
+function SourceWorker({ query }: SourceProps) {
   return <prompt><msg p={1}>{query}</msg></prompt>;
+}
+
+function LegacySourceWorker({
+  query,
+  store,
+}: AgentRenderProps<SourceProps, SourceState>) {
+  const state = useAgentState(store);
+  return <prompt><msg p={1}>{query}:{state.runs}</msg></prompt>;
 }
 
 describe("normal agent source modules", () => {
@@ -40,17 +49,33 @@ describe("normal agent source modules", () => {
     expect(Compiled.spec.impl).toBe(SourceWorker);
     expect(Compiled.spec.capabilities).toEqual({ onResult: { kind: "result" } });
 
-    const roots = evaluateComponent(Compiled, {
-      name: "worker:1",
-      query: "hello",
-      onResult: () => {},
-    });
+    const roots = evaluateTree(
+      <Compiled name="worker:1" query="hello" onResult={() => {}} />,
+    );
     expect(roots.flatMap((root) => collectInfra(root))[0]).toMatchObject({
       kind: "subagent",
       name: "worker:1",
       config: { kind: "source-worker", query: "hello" },
       bindings: { onResult: { kind: "result" } },
     });
+  });
+
+  it("keeps AgentRenderProps sources hook-safe during React-free evaluation", () => {
+    const Compiled = compileAgent(LegacySourceWorker, profile);
+    const rendered = evaluateComponent(Compiled.spec.impl, {
+      query: "legacy",
+      onResult: () => {},
+      store: {
+        get: () => ({ runs: 2 }),
+        set: () => {},
+        subscribe: () => () => {},
+        snapshot: () => "",
+      },
+      emit: () => {},
+    });
+
+    expect(JSON.stringify(rendered)).toContain("legacy");
+    expect(JSON.stringify(rendered)).toContain('"value":"2"');
   });
 
   it("emits the checked-in class-to-boundary chess companions", () => {
@@ -81,9 +106,38 @@ describe("normal agent source modules", () => {
     );
   });
 
+  it("emits the checked-in function-to-boundary companions", () => {
+    const cases: Array<[string, string, string]> = [
+      // [sourceImport, exportName, checked-in companion]
+      ["../openai-seat.agent.tsx", "OpenAISeat", "../examples/chess-goal/generated/openai-seat.compiled.tsx"],
+      ["../gemini-seat.agent.tsx", "GeminiSeat", "../examples/chess-goal/generated/gemini-seat.compiled.tsx"],
+      ["../phase-worker.agent.tsx", "PhaseWorker", "../examples/goal/generated/phase-worker.compiled.tsx"],
+      ["../region-extractor.agent.tsx", "RegionExtractor", "../examples/parse-pm/generated/region-extractor.compiled.tsx"],
+    ];
+    for (const [sourceImport, exportName, companion] of cases) {
+      const emitted = emitAgentModule({
+        sourceImport,
+        exportName,
+        runtimeImport: "../../../src/agent-component.tsx",
+        mode: "function",
+      });
+      expect(emitted).toBe(readFileSync(new URL(companion, import.meta.url), "utf8"));
+    }
+  });
+
   it("rejects invalid generated export names", () => {
     expect(() =>
       emitAgentModule({ sourceImport: "../anything.agent.tsx", exportName: "not-valid-name" })
     ).toThrow("exportName must be a JavaScript identifier");
+  });
+
+  it("uses published package entrypoints in generated modules by default", () => {
+    expect(
+      emitAgentModule({
+        sourceImport: "./worker.agent.js",
+        exportName: "Worker",
+        mode: "function",
+      }),
+    ).toContain('from "@steventsao/agent-jsx/agent-component"');
   });
 });

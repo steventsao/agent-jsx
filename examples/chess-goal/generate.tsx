@@ -2,12 +2,14 @@
  * Compile the chess-goal example through the SAME pipeline as examples/chess:
  * discovery over sample states (one per active phase, so both seats are
  * reachable), Flue modules for the root and each seat, and the Cloudflare
- * Think target. The root is a plain `agentComponent` and the seats are sealed
- * `agent()` components (./players.tsx), so unlike chess there are no
- * class→boundary companions to emit anywhere.
+ * Think target. The root is a plain `agentComponent` and the seats are
+ * authored function components + profiles (./*-seat.agent.tsx) lowered by
+ * compiler-owned companions (./generated/*.compiled.tsx, emitted below), so
+ * unlike chess there are no class→boundary companions to emit anywhere.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
+import { emitAgentModule } from "../../src/compile/emit-agent-module.ts";
 import { emitThink } from "../../src/compile/emit-think.ts";
 import { discoverAgents, type AgentModule } from "../../src/compile/graph.ts";
 import {
@@ -39,6 +41,23 @@ const childProfiles = rootNode.directChildren.map((kind) => ({
 const output = new URL("./generated/", import.meta.url);
 mkdirSync(output, { recursive: true });
 const write = (name: string, source: string) => writeFileSync(new URL(name, output), source);
+
+// The compiler-owned seat companions: function + profile → boundary, exported
+// under the same public JSX name the authored function declares.
+for (const [file, exportName] of [
+  ["openai-seat", "OpenAISeat"],
+  ["gemini-seat", "GeminiSeat"],
+] as const) {
+  write(
+    `${file}.compiled.tsx`,
+    emitAgentModule({
+      sourceImport: `../${file}.agent.tsx`,
+      exportName,
+      runtimeImport: "../../../src/agent-component.tsx",
+      mode: "function",
+    }),
+  );
+}
 
 write(
   "chess-goal-match.flue.ts",
