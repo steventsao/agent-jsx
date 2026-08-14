@@ -1,6 +1,6 @@
 {
   "name": "@agent-jsx/core",
-  "version": "0.1.0-alpha.0",
+  "version": "0.1.0-alpha.1",
   "description": "Compose typed agents as JSX and compile them to Cloudflare Agents.",
   "license": "Apache-2.0",
   "author": "Steven Tsao",
