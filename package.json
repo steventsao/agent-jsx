@@ -35,6 +35,11 @@
       "import": "./dist/agent-component.js",
       "default": "./dist/agent-component.js"
     },
+    "./state": {
+      "types": "./dist/state.d.ts",
+      "import": "./dist/state.js",
+      "default": "./dist/state.js"
+    },
     "./compile/emit-agent-module": {
       "types": "./dist/compile/emit-agent-module.d.ts",
       "import": "./dist/compile/emit-agent-module.js",
@@ -68,7 +73,7 @@
   },
   "scripts": {
     "build": "bun run clean && bun run build:js && bun run build:types",
-    "build:js": "bun build --target=node --format=esm --packages=external --sourcemap=external --outdir=dist --root=src src/agent-class.tsx src/agent-component.tsx src/compile/emit-agent-module.ts src/compile/cloudflare.ts src/goal.ts src/jsx-data-runtime.ts",
+    "build:js": "bun build --target=node --format=esm --packages=external --sourcemap=external --outdir=dist --root=src src/agent-class.tsx src/agent-component.tsx src/state.ts src/compile/emit-agent-module.ts src/compile/cloudflare.ts src/goal.ts src/jsx-data-runtime.ts",
     "build:types": "tsc -p tsconfig.build.json",
     "clean": "bun -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
     "test": "bun test tests",

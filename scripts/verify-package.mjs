@@ -9,6 +9,7 @@ const packageName = packageJson.name;
 const entrypoints = [
   [`${packageName}/agent`, ["Agent", "callable", "compileAgentClass", "composeAgent", "result"]],
   [`${packageName}/agent-component`, ["Agent", "agentComponent", "compileAgent", "defineAgentProfile"]],
+  [`${packageName}/state`, ["createStore", "useAgentState", "withStaticEval"]],
   [`${packageName}/compile/emit-agent-module`, ["emitAgentModule"]],
   [`${packageName}/compile/cloudflare`, [
     "analyzeAgent",

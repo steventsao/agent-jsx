@@ -9,8 +9,8 @@ import {
 } from "../src/agent-component.tsx";
 import { result } from "../src/agent-class.tsx";
 import { evaluateComponent, evaluateTree } from "../src/compile/evaluate.ts";
-import { collectInfra } from "../src/tree.ts";
-import { createStore } from "../src/store.ts";
+import { collectInfra, collectPrompt } from "../src/tree.ts";
+import { createStore, useAgentState } from "../src/state.ts";
 import { discoverAgents } from "../src/compile/graph.ts";
 import { OpenAISeat } from "../examples/chess-goal/players.tsx";
 import { GoalProvider } from "../examples/goal/goal-provider.tsx";
@@ -114,6 +114,75 @@ describe("PascalCase function agents", () => {
       store: createStore({}),
     });
     expect(renders).toBe(1);
+  });
+
+  it("re-renders prompt and tool authority after a durable store transition", async () => {
+    interface SwitchState extends Record<string, unknown> {
+      mode: "draft" | "review";
+    }
+
+    function StatefulWorker({ store }: AgentRenderProps<{}, SwitchState>) {
+      const { mode } = useAgentState(store);
+      return (
+        <>
+          <prompt>
+            <sys p={10}>{mode === "draft" ? "Draft the answer." : "Review the answer."}</sys>
+          </prompt>
+          {mode === "draft" ? (
+            <tool
+              name="submit-draft"
+              description="Submit the draft for review."
+              run={() => {
+                store.set({ mode: "review" });
+                return "submitted";
+              }}
+            />
+          ) : (
+            <tool
+              name="request-revision"
+              description="Return the answer for revision."
+              run={() => {
+                store.set({ mode: "draft" });
+                return "revision-requested";
+              }}
+            />
+          )}
+        </>
+      );
+    }
+
+    const StatefulAgent = compileAgent(
+      StatefulWorker,
+      defineAgentProfile<{}, SwitchState>({
+        name: "stateful-worker",
+        model: "sim/stateful-worker",
+        initialState: { mode: "draft" },
+        sampleProps: {},
+      }),
+    );
+    const store = createStore<SwitchState>(StatefulAgent.spec.initialState);
+    const render = () => {
+      const roots = evaluateComponent(StatefulAgent.spec.impl, { store });
+      return {
+        prompt: collectPrompt(roots).map((block) => block.text),
+        tools: roots
+          .flatMap((root) => collectInfra(root))
+          .filter((record) => record.kind === "tool"),
+      };
+    };
+
+    const draft = render();
+    expect(draft.prompt).toEqual(["Draft the answer."]);
+    expect(draft.tools.map((tool) => tool.name)).toEqual(["submit-draft"]);
+    expect(draft.tools[0]!.config.description).toBe("Submit the draft for review.");
+
+    expect(await draft.tools[0]!.handlers.run?.({})).toBe("submitted");
+    expect(store.get()).toEqual({ mode: "review" });
+
+    const review = render();
+    expect(review.prompt).toEqual(["Review the answer."]);
+    expect(review.tools.map((tool) => tool.name)).toEqual(["request-revision"]);
+    expect(review.tools[0]!.config.description).toBe("Return the answer for revision.");
   });
 
   it("uses the same function + profile shape for a model-free supervisor", () => {
