@@ -2,7 +2,7 @@
   "lockfileVersion": 1,
   "workspaces": {
     "": {
-      "name": "agent-jsx",
+      "name": "@agent-jsx/core",
       "dependencies": {
         "react-reconciler": "^0.31.0",
       },

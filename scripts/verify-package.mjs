@@ -1,19 +1,25 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+
+const packageJson = JSON.parse(
+  await readFile(new URL("../package.json", import.meta.url), "utf8"),
+);
+const packageName = packageJson.name;
 
 const entrypoints = [
-  ["@steventsao/agent-jsx/agent", ["Agent", "callable", "compileAgentClass", "composeAgent", "result"]],
-  ["@steventsao/agent-jsx/agent-component", ["Agent", "agentComponent", "compileAgent", "defineAgentProfile"]],
-  ["@steventsao/agent-jsx/compile/emit-agent-module", ["emitAgentModule"]],
-  ["@steventsao/agent-jsx/compile/cloudflare", [
+  [`${packageName}/agent`, ["Agent", "callable", "compileAgentClass", "composeAgent", "result"]],
+  [`${packageName}/agent-component`, ["Agent", "agentComponent", "compileAgent", "defineAgentProfile"]],
+  [`${packageName}/compile/emit-agent-module`, ["emitAgentModule"]],
+  [`${packageName}/compile/cloudflare`, [
     "analyzeAgent",
     "discoverAgents",
     "discoverToolSlots",
     "emitCloudflare",
     "emitThink",
   ]],
-  ["@steventsao/agent-jsx/goal", ["buildGoalTable", "goalInit", "goalReducer"]],
-  ["@steventsao/agent-jsx/jsx-runtime", ["Fragment", "jsx", "jsxs"]],
-  ["@steventsao/agent-jsx/jsx-dev-runtime", ["Fragment", "jsxDEV"]],
+  [`${packageName}/goal`, ["buildGoalTable", "goalInit", "goalReducer"]],
+  [`${packageName}/jsx-runtime`, ["Fragment", "jsx", "jsxs"]],
+  [`${packageName}/jsx-dev-runtime`, ["Fragment", "jsxDEV"]],
 ];
 
 for (const [specifier, expectedExports] of entrypoints) {
