@@ -33,6 +33,7 @@ const RUNTIME_FILES: ReadonlyArray<readonly [src: string, dest: string]> = [
   ["../agent-class.tsx", "agent-class.tsx"],
   ["../workflow-executor.ts", "workflow-executor.ts"],
   ["./evaluate.ts", "compile/evaluate.ts"],
+  ["./flue2-runtime.ts", "compile/flue2-runtime.ts"],
   // the react-free JSX runtime: compiled packages set jsxImportSource to a
   // package-imports alias resolving here, so component .tsx never needs react
   ["../jsx-data-runtime.ts", "jsx-runtime.ts"],

@@ -82,6 +82,7 @@
     "ex:compile": "bun examples/compile.tsx",
     "chess:generate": "bun examples/chess/generate.tsx",
     "chess:worker:test": "cd compat/chess && bun run test && bun run typecheck",
+    "flue2:test": "cd compat/flue2 && bun run typecheck && bun run test",
     "chess:worker:deploy": "cd compat/chess && bun run deploy",
     "fixtures": "bun scripts/gen-fixtures.tsx",
     "fixtures:pdf": "bun scripts/pdf/build-fixture.tsx"

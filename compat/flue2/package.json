@@ -1,0 +1,21 @@
+{
+  "name": "agent-jsx-compat-flue2",
+  "private": true,
+  "type": "module",
+  "description": "Proves generated flue 2.0 function-agent modules typecheck and load against the REAL @flue/runtime 2.0.x — its exported hook surface is the assertion.",
+  "imports": {
+    "#agentjsx/*": "./src/generated/runtime/*.ts"
+  },
+  "scripts": {
+    "generate": "bun scripts/generate.tsx",
+    "typecheck": "bun run generate && tsc --noEmit",
+    "test": "bun run generate && bun test test"
+  },
+  "dependencies": {
+    "@flue/runtime": "2.0.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^5.7.0"
+  }
+}

@@ -51,6 +51,8 @@ jobs:
             command: bun run typecheck && bun run test
           - target: flue
             command: bun run test
+          - target: flue2
+            command: bun run typecheck && bun run test
           - target: pdf-compiled
             command: bun run test
           - target: pdf-target
