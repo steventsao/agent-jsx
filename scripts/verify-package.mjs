@@ -21,6 +21,18 @@ const entrypoints = [
   [`${packageName}/goal`, ["buildGoalTable", "goalInit", "goalReducer"]],
   [`${packageName}/jsx-runtime`, ["Fragment", "jsx", "jsxs"]],
   [`${packageName}/jsx-dev-runtime`, ["Fragment", "jsxDEV"]],
+  [`${packageName}/instruction`, [
+    "Code",
+    "Fragment",
+    "List",
+    "P",
+    "Section",
+    "System",
+    "renderChildren",
+    "renderDocument",
+  ]],
+  [`${packageName}/instruction/jsx-runtime`, ["Fragment", "jsx", "jsxs"]],
+  [`${packageName}/instruction/jsx-dev-runtime`, ["Fragment", "jsxDEV"]],
 ];
 
 for (const [specifier, expectedExports] of entrypoints) {
