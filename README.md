@@ -12,7 +12,8 @@ explicitly as typed props.
 [API reference](https://steventsao.github.io/agent-jsx/api/) ·
 [Goal example](examples/goal/) ·
 [Chess example](examples/chess-goal/) ·
-[Cloudflare Think target](docs/think-target.md)
+[Cloudflare Think target](docs/think-target.md) ·
+[Flue instruction runtime](docs/instruction-runtime.md)
 
 ## Install
 

@@ -65,6 +65,21 @@
       "import": "./dist/jsx-data-runtime.js",
       "default": "./dist/jsx-data-runtime.js"
     },
+    "./instruction": {
+      "types": "./dist/instruction/index.d.ts",
+      "import": "./dist/instruction/index.js",
+      "default": "./dist/instruction/index.js"
+    },
+    "./instruction/jsx-runtime": {
+      "types": "./dist/instruction/jsx-runtime.d.ts",
+      "import": "./dist/instruction/jsx-runtime.js",
+      "default": "./dist/instruction/jsx-runtime.js"
+    },
+    "./instruction/jsx-dev-runtime": {
+      "types": "./dist/instruction/jsx-dev-runtime.d.ts",
+      "import": "./dist/instruction/jsx-dev-runtime.js",
+      "default": "./dist/instruction/jsx-dev-runtime.js"
+    },
     "./package.json": "./package.json"
   },
   "imports": {
@@ -73,7 +88,7 @@
   },
   "scripts": {
     "build": "bun run clean && bun run build:js && bun run build:types",
-    "build:js": "bun build --target=node --format=esm --packages=external --sourcemap=external --outdir=dist --root=src src/agent-class.tsx src/agent-component.tsx src/state.ts src/compile/emit-agent-module.ts src/compile/cloudflare.ts src/goal.ts src/jsx-data-runtime.ts",
+    "build:js": "bun build --target=node --format=esm --packages=external --sourcemap=external --outdir=dist --root=src src/agent-class.tsx src/agent-component.tsx src/state.ts src/compile/emit-agent-module.ts src/compile/cloudflare.ts src/goal.ts src/jsx-data-runtime.ts src/instruction/index.ts src/instruction/jsx-runtime.ts src/instruction/jsx-dev-runtime.ts",
     "build:types": "tsc -p tsconfig.build.json",
     "clean": "bun -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
     "test": "bun test tests",
