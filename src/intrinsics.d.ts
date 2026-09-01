@@ -1,4 +1,5 @@
 import type {
+  DurableRunProps,
   PhaseProps,
   TaskProps,
   ScheduleProps,
@@ -18,6 +19,7 @@ declare module "react" {
       subagent: SubagentProps & Attributes;
       tool: ToolProps & Attributes;
       task: TaskProps & Attributes;
+      durable: DurableRunProps & Attributes;
       // Goal: a declared phase of a long-horizon machine. Reconciles to no
       // record; swept into the transition graph by collectPhases.
       phase: PhaseProps & Attributes;

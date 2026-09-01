@@ -14,7 +14,7 @@
  * from serializing closures.
  */
 
-export type InfraKind = "sensor" | "schedule" | "subagent" | "tool" | "task";
+export type InfraKind = "sensor" | "schedule" | "subagent" | "tool" | "task" | "durable";
 
 export type InfraCapabilityKind = "callback" | "method" | "result" | "continuation";
 
@@ -177,6 +177,55 @@ export interface TaskProps {
    *  Unmount before completion cancels. Result flows to onDone. */
   run: () => unknown | Promise<unknown>;
   onDone?: (result: unknown) => void;
+}
+
+/**
+ * The named identity of a durable workflow definition. The authored surface
+ * (src/durable.ts `defineDurableWorkflow`) satisfies this structurally; this
+ * type exists so the shipped authoring layer can reference a workflow WITHOUT
+ * importing the engine module (which carries the Effect dependency).
+ */
+export interface DurableWorkflowRef {
+  readonly name: string;
+}
+
+/**
+ * What a host needs from a durable engine — the structural slice of
+ * `DurableEngine` (src/durable.ts). Plain promises only: Effect never crosses
+ * this boundary. Exactly-once is the engine's contract: `execute` for an
+ * already-complete (workflow, payload) identity replays the persisted result
+ * instead of running the body again.
+ */
+export interface DurableEngineLike {
+  execute(request: {
+    workflow: string;
+    payload?: Record<string, unknown>;
+  }): Promise<unknown>;
+}
+
+/**
+ * A durable leaf: one imperative workflow execution mounted by the reactive
+ * machine. The record's `name` is its MOUNT identity (reconciled like any
+ * infra record); its EXECUTION identity is (workflow, payload) — so a leaf
+ * unmounted by a phase change and remounted later addresses the SAME durable
+ * execution, and a completed execution replays instead of re-running.
+ *
+ * `workflow` is a NAME, resolved against the engine's registry — the record
+ * stays fully serializable and survives hibernation. Authors normally write
+ * the PascalCase `<DurableRun workflow={Definition}>` wrapper, which lowers
+ * the definition to its name here.
+ */
+export interface DurableRunProps {
+  name: string;
+  /** The workflow definition's registered name. */
+  workflow: string;
+  /** Serializable instance input. Part of the durable execution identity. */
+  payload?: Record<string, unknown>;
+  /** Receives the workflow's (possibly replayed) result. Grant it with
+   *  `result(...)` when it moves a goal machine. */
+  onResult?: (result: unknown) => void;
+  /** Receives a failed execution's error. Without it, the host logs loudly. */
+  onError?: (error: unknown) => void;
 }
 
 export interface ToolProps {

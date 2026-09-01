@@ -12,5 +12,10 @@
   "include": [
     "src"
   ],
-  "exclude": []
+  "exclude": [
+    // Runtime-internal Effect engine: not a package export, and its
+    // declarations would drag the (dev-only) effect packages into the
+    // published type graph. See the header of src/durable.ts.
+    "src/durable.ts"
+  ]
 }
