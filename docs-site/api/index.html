@@ -40,7 +40,7 @@
     <main class="docs">
       <p class="eyebrow">Reference</p>
       <h1>Agent API</h1>
-      <p class="lede small">The authored API is exported from <code>@steventsao/agent-jsx/agent</code>. An agent renders its complete model-facing definition, but never declares whether it is a parent or child; composition supplies that relationship.</p>
+      <p class="lede small">The authored API is exported from <code>@agent-jsx/core/agent</code>. An agent renders its complete model-facing definition, but never declares whether it is a parent or child; composition supplies that relationship.</p>
 
       <section id="agent" class="api-section">
         <h2><code>Agent&lt;S, P&gt;</code></h2>
@@ -201,7 +201,7 @@ approve(input: Approval): Result {
         <pre><code>import {
   emitCloudflare,
   emitThink,
-} from "@steventsao/agent-jsx/compile/cloudflare";</code></pre>
+} from "@agent-jsx/core/compile/cloudflare";</code></pre>
         <p>Target plumbing is intentionally absent from the authored API:</p>
         <div class="field-table">
           <div class="field-row header"><span>Target</span><span>Compiler output</span></div>

@@ -1,5 +1,5 @@
 {
-  "name": "@steventsao/agent-jsx",
+  "name": "@agent-jsx/core",
   "version": "0.1.0-alpha.0",
   "description": "Compose typed agents as JSX and compile them to Cloudflare Agents.",
   "license": "Apache-2.0",
@@ -35,6 +35,11 @@
       "import": "./dist/agent-component.js",
       "default": "./dist/agent-component.js"
     },
+    "./state": {
+      "types": "./dist/state.d.ts",
+      "import": "./dist/state.js",
+      "default": "./dist/state.js"
+    },
     "./compile/emit-agent-module": {
       "types": "./dist/compile/emit-agent-module.d.ts",
       "import": "./dist/compile/emit-agent-module.js",
@@ -68,10 +73,11 @@
   },
   "scripts": {
     "build": "bun run clean && bun run build:js && bun run build:types",
-    "build:js": "bun build --target=node --format=esm --packages=external --sourcemap=external --outdir=dist --root=src src/agent-class.tsx src/agent-component.tsx src/compile/emit-agent-module.ts src/compile/cloudflare.ts src/goal.ts src/jsx-data-runtime.ts",
+    "build:js": "bun build --target=node --format=esm --packages=external --sourcemap=external --outdir=dist --root=src src/agent-class.tsx src/agent-component.tsx src/state.ts src/compile/emit-agent-module.ts src/compile/cloudflare.ts src/goal.ts src/jsx-data-runtime.ts",
     "build:types": "tsc -p tsconfig.build.json",
     "clean": "bun -e \"import { rmSync } from 'node:fs'; rmSync('dist', { recursive: true, force: true });\"",
     "test": "bun test tests",
+    "test:all": "bun scripts/test-all.ts",
     "check": "bun run typecheck && bun run test",
     "package:check": "bun run build && publint && attw --pack . --profile esm-only && node scripts/verify-package.mjs",
     "ci": "bun run check && bun run package:check",
@@ -85,6 +91,7 @@
     "ex:layout-review": "bun examples/layout-review/demo.tsx",
     "ex:goal": "bun examples/goal/demo.tsx",
     "ex:durable": "bun examples/durable/demo.tsx",
+    "goal:generate": "bun examples/goal/generate.tsx",
     "all": "bun examples/uptime.tsx && bun examples/rehydrate.tsx && bun examples/verify.tsx && bun examples/document-review.tsx && bun examples/layout-review/demo.tsx && bun examples/goal/demo.tsx && bun examples/durable/demo.tsx && bun examples/compile.tsx",
     "compile:document-review": "cd compat/document-review && bun run generate",
     "test:document-review": "cd compat/document-review && bun run test",
@@ -97,6 +104,7 @@
     "chess:worker:deploy": "cd compat/chess && bun run deploy",
     "ex:chess-goal": "bun examples/chess-goal/demo.tsx",
     "ex:parse-pm": "bun examples/parse-pm/demo.tsx",
+    "parse-pm:generate": "bun examples/parse-pm/generate.tsx",
     "parse-pm:worker:test": "cd compat/parse-pm && bun run test && bun run typecheck",
     "parse-pm:worker:deploy": "cd compat/parse-pm && bun run deploy",
     "chess-goal:generate": "bun examples/chess-goal/generate.tsx",

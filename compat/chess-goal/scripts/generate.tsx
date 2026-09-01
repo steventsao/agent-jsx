@@ -5,14 +5,17 @@
  *   1. copy the react-free runtime file set (now including src/goal.ts);
  *   2. copy the authored agent files with imports rewritten onto that runtime
  *      (board + player prompt from examples/chess UNCHANGED; goal-provider
- *      from examples/goal; players + seats + match from examples/chess-goal);
+ *      from examples/goal; seat contract + seat sources + barrel + seats +
+ *      match from examples/chess-goal), then re-emit the compiler-owned seat
+ *      companions against the copied runtime;
  *   3. emit the Cloudflare Think target with the deployment model resolver.
  *
- * The root is a plain `agentComponent` and the seats are sealed `agent()`
- * components, so there are no class→boundary companions to emit at all.
+ * The root is a plain `agentComponent` and the seats are authored function
+ * components + profiles, so there are no class→boundary companions to emit.
  */
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { emitAgentModule } from "../../../src/compile/emit-agent-module.ts";
 import { emitThink } from "../../../src/compile/emit-think.ts";
 import { discoverAgents, type AgentModule } from "../../../src/compile/graph.ts";
 import { copyAgentComponent, emitRuntimeFiles } from "../../../src/compile/runtime-files.ts";
@@ -57,17 +60,45 @@ copyAgentComponent(
   },
 );
 
-// The chess-goal composition itself: sealed seats + seats + match.
-for (const file of ["players.tsx", "seats.tsx", "match.tsx"]) {
+// The chess-goal composition itself: seat contract + authored seat sources +
+// the generated barrel + seats + match.
+const CHESS_GOAL_REWRITES: Record<string, string> = {
+  "../chess/board.tsx": "./board.tsx",
+  "../chess/player-prompt.tsx": "./player-prompt.tsx",
+  "../goal/goal-provider.tsx": "./goal-provider.tsx",
+};
+for (const file of [
+  "seat-contract.ts",
+  "openai-seat.agent.tsx",
+  "gemini-seat.agent.tsx",
+  "players.tsx",
+  "seats.tsx",
+  "match.tsx",
+]) {
   copyAgentComponent(
     new URL(`../../../examples/chess-goal/${file}`, import.meta.url),
     new URL(file, agents).pathname,
     "../generated/runtime",
-    {
-      "../chess/board.tsx": "./board.tsx",
-      "../chess/player-prompt.tsx": "./player-prompt.tsx",
-      "../goal/goal-provider.tsx": "./goal-provider.tsx",
-    },
+    CHESS_GOAL_REWRITES,
+  );
+}
+
+// Re-emit the compiler-owned function→boundary companions against the copied
+// runtime (the barrel at agents/players.tsx resolves them at ./generated/).
+const generatedAgents = new URL("./generated/", agents);
+mkdirSync(generatedAgents, { recursive: true });
+for (const [file, exportName] of [
+  ["openai-seat", "OpenAISeat"],
+  ["gemini-seat", "GeminiSeat"],
+] as const) {
+  writeFileSync(
+    new URL(`${file}.compiled.tsx`, generatedAgents),
+    emitAgentModule({
+      sourceImport: `../${file}.agent.tsx`,
+      exportName,
+      runtimeImport: "../../generated/runtime/agent-component.tsx",
+      mode: "function",
+    }),
   );
 }
 

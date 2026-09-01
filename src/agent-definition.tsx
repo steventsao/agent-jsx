@@ -16,7 +16,9 @@ import type {
   McpServerDefinitions,
 } from "./types.ts";
 
-/** Runtime brand proving a value came through Agent.define(). */
+/** Runtime brand proving a value came through Agent.define().
+ * The registered key keeps the original package identity so values remain
+ * interoperable across the namespace migration to `@agent-jsx/core`. */
 export const agentDefinitionBrand: unique symbol = Symbol.for(
   "@steventsao/agent-jsx/agent-definition",
 ) as never;
@@ -91,6 +93,7 @@ function normalizePrompt(value: ReactNode | null | undefined): ReactNode {
   return <prompt>{value as any}</prompt>;
 }
 
+// Stable cross-package protocol key; do not couple it to the current npm name.
 const dataElementBrand = Symbol.for("@steventsao/agent-jsx/data-element");
 
 // Internal string hosts keep definition fields disjoint after components and

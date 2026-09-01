@@ -96,7 +96,7 @@ bun run chess:generate
 
 Installed-package generators import `emitThink`, `emitCloudflare`, graph
 discovery, and analysis from
-`@steventsao/agent-jsx/compile/cloudflare`; this in-repository generator uses
+`@agent-jsx/core/compile/cloudflare`; this in-repository generator uses
 the source modules directly so its checked-in fixtures exercise the same code.
 
 The deployable UI + Durable Object Worker is in `compat/chess`. Models are the

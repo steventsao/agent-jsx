@@ -39,21 +39,35 @@ export function createStore<S extends Record<string, unknown>>(initial: S): Agen
 
 /**
  * Compiled targets evaluate components WITHOUT React: the runtime re-renders
- * explicitly on every setState, so there is nothing to subscribe to. The flag
- * is constant for the lifetime of an environment, so hook-call ordering stays
- * consistent in the dev/React path that reads it.
+ * explicitly on every setState, so there is nothing to subscribe to.
+ *
+ * Package entrypoints are bundled independently, so a module-local flag would
+ * give each entrypoint its own static-eval state. Keep a depth counter on the
+ * realm global instead: Symbol.for gives every bundled copy the same key, and
+ * a depth (rather than a boolean) preserves an outer evaluation across nested
+ * compiler/evaluator calls.
  */
-let staticEval = false;
+const STATIC_EVAL_DEPTH = Symbol.for("@agent-jsx/core/static-eval-depth");
+type StaticEvalGlobal = typeof globalThis & Record<symbol, unknown>;
+
+function getStaticEvalDepth(): number {
+  const depth = (globalThis as StaticEvalGlobal)[STATIC_EVAL_DEPTH];
+  return typeof depth === "number" && Number.isSafeInteger(depth) && depth > 0 ? depth : 0;
+}
+
 export function withStaticEval<R>(fn: () => R): R {
-  staticEval = true;
+  const shared = globalThis as StaticEvalGlobal;
+  const previousDepth = getStaticEvalDepth();
+  shared[STATIC_EVAL_DEPTH] = previousDepth + 1;
   try {
     return fn();
   } finally {
-    staticEval = false;
+    if (previousDepth === 0) delete shared[STATIC_EVAL_DEPTH];
+    else shared[STATIC_EVAL_DEPTH] = previousDepth;
   }
 }
 export function isStaticEval(): boolean {
-  return staticEval;
+  return getStaticEvalDepth() > 0;
 }
 
 /**
