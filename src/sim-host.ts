@@ -13,7 +13,7 @@
  *     records are inert (handlers dead) until the next commit rebinds them.
  */
 
-import type { AgentHost, HostOp, InfraRecord } from "./types.ts";
+import type { AgentHost, DurableEngineLike, HostOp, InfraRecord } from "./types.ts";
 import { resultBindingName } from "./tree.ts";
 
 interface LiveRecord extends InfraRecord {
@@ -28,6 +28,14 @@ export interface World {
   subagentLatency?: number;
   /** Optional deterministic subagent transport for examples/tests. */
   subagentResult?: (record: InfraRecord, t: number) => unknown;
+  /**
+   * The durable engine `<durable>` records execute against (src/durable.ts
+   * `createDurableEngine`, or any structural stand-in). It plays the role
+   * DO-side workflow storage plays in production: it OUTLIVES the SimHost —
+   * pass the same engine to `SimHost.restore` and a completed execution
+   * replays its persisted result after "hibernation" instead of re-running.
+   */
+  durable?: DurableEngineLike;
 }
 
 const key = (kind: string, name: string) => `${kind}:${name}`;
@@ -116,6 +124,73 @@ export class SimHost implements AgentHost {
   private onCreate(rec: InfraRecord): void {
     if (rec.kind === "subagent") this.armSubagent(rec.name);
     if (rec.kind === "task") this.armTask(rec.name);
+    if (rec.kind === "durable") this.armDurable(rec.name);
+  }
+
+  /** In-flight durable executions, so tests/demos can `await host.settle()`. */
+  private inFlight = new Set<Promise<unknown>>();
+
+  /** Resolve once every started durable execution has delivered (or been
+   *  revoked). Deliveries re-enter through `flush`, exactly like tick work. */
+  async settle(): Promise<void> {
+    while (this.inFlight.size > 0) {
+      await Promise.allSettled([...this.inFlight]);
+    }
+  }
+
+  /** A `<durable>` record: start (or JOIN) the durable execution identified by
+   *  (workflow, payload) on the world's engine. Exactly-once lives in the
+   *  ENGINE, not here — a remounted record addresses the same execution, and a
+   *  completed one replays its persisted result. Unmount revokes DELIVERY
+   *  (the record is gone at completion time), never the execution itself:
+   *  terminate-on-despawn is a future policy prop, mirroring how a Cloudflare
+   *  Workflow instance outlives the DO request that created it. */
+  private armDurable(name: string): void {
+    this.pendingWork.push({
+      due: this.t + 1,
+      name,
+      run: (flush) => {
+        const live = this.records.get(key("durable", name));
+        if (!live) return;
+        if (live.dormant) {
+          // Restored but not yet rebound: handlers are dead, so a delivery now
+          // would vanish. Re-arm; the engine makes the eventual execute a
+          // replay, so waiting costs nothing but a tick.
+          this.armDurable(name);
+          return;
+        }
+        const engine = this.world.durable;
+        if (!engine) {
+          throw new Error(
+            `[sim] <durable name="${name}"> mounted but the World has no durable engine; ` +
+              "pass `durable: createDurableEngine({ workflows })` (src/durable.ts)",
+          );
+        }
+        const request = {
+          workflow: String(live.config.workflow),
+          payload: (live.config.payload as Record<string, unknown> | undefined) ?? {},
+        };
+        const execution = engine.execute(request).then(
+          (result) => {
+            flush(() => {
+              // Freshest handlers, and only while the record is still mounted:
+              // an unmounted leaf's result has no grant left to spend.
+              this.records.get(key("durable", name))?.handlers.onResult?.(result);
+            });
+          },
+          (error) => {
+            flush(() => {
+              const rec = this.records.get(key("durable", name));
+              if (!rec) return;
+              if (rec.handlers.onError) rec.handlers.onError(error);
+              else this.log(`   ✗ durable ${name} failed with no onError: ${String(error)}`);
+            });
+          },
+        );
+        this.inFlight.add(execution);
+        void execution.finally(() => this.inFlight.delete(execution));
+      },
+    });
   }
 
   /** One-shot <task>: run once (next tick), fold via onDone. Freshest
@@ -187,9 +262,12 @@ export class SimHost implements AgentHost {
       });
       // In-flight work died with the process; the durable runtime re-arms it
       // on wake (what DO alarms / workflow retries do). Handlers resolve at
-      // fire time, so the post-wake render supplies fresh closures.
+      // fire time, so the post-wake render supplies fresh closures. A durable
+      // record re-arms into the SAME engine execution: completed work replays
+      // its persisted result rather than running again.
       if (rec.kind === "subagent") host.armSubagent(rec.name);
       if (rec.kind === "task") host.armTask(rec.name);
+      if (rec.kind === "durable") host.armDurable(rec.name);
     }
     return host;
   }

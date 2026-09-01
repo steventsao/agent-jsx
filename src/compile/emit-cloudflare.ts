@@ -587,6 +587,19 @@ ${authoredRuntime}  /** Durable self-identity. partyserver's \`.name\` is REQUES
   async #reconcileOnce() {
     const desired = this.#renderHandlers();
 
+    // <DurableRun> has no Cloudflare lowering yet (the planned target is
+    // env.WORKFLOW.create() with matching errored-instance semantics; the
+    // SimHost engine is src/durable.ts). Fail LOUDLY rather than letting a
+    // durable leaf silently converge to nothing.
+    const durables = desired.filter((r) => r.kind === "durable");
+    if (durables.length > 0) {
+      throw new Error(
+        \`<DurableRun> records [\${durables.map((r) => r.name).join(", ")}] have no Cloudflare \` +
+          "lowering yet; run them under SimHost with a durable engine, or lift the work into " +
+          "a <task>/<subagent> boundary for this target."
+      );
+    }
+
     // schedules & sensors: converge durable rows against desired, by payload key
     const timed = desired.filter((r) => r.kind === "schedule" || r.kind === "sensor");
     const live = await this.getSchedules();

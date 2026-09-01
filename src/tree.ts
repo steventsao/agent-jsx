@@ -17,7 +17,7 @@ export interface HostNode {
   children: HostNode[];
 }
 
-const INFRA_KINDS = new Set<string>(["sensor", "schedule", "subagent", "tool", "task"]);
+const INFRA_KINDS = new Set<string>(["sensor", "schedule", "subagent", "tool", "task", "durable"]);
 /** Compiler-owned host markers that keep class definition fields disjoint. */
 export const AGENT_DEFINITION_PROMPT_ZONE = "agent-definition-prompt-zone";
 export const AGENT_DEFINITION_TOOLS_ZONE = "agent-definition-tools-zone";
