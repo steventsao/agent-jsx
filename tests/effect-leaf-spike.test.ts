@@ -31,6 +31,13 @@
  * wanted shape is a WorkflowEngine over local MessageStorage with no sharding.
  * And Effect must never reach the authored surface: props and callbacks stay
  * plain async/JSX, with Effect confined to the leaf's implementation.
+ *
+ * SETTLED SINCE: the executor this spike de-risked now exists — src/durable.ts
+ * (`defineDurableWorkflow` + `createDurableEngine`) drives the `<DurableRun>`
+ * record under SimHost, with the authored surface plain async and Effect
+ * confined inside (tests/durable-run.test.tsx). This file stays as the
+ * third-party canary: if a package upgrade breaks these semantics, it should
+ * fail HERE first, independent of agent-jsx's wrapper.
  */
 
 import { describe, expect, it } from "bun:test";

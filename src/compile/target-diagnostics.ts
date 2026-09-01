@@ -89,6 +89,7 @@ const THINK_UNSUPPORTED: Record<string, string> = {
   sensor: "think-sensor-unsupported",
   schedule: "think-schedule-unsupported",
   task: "think-task-unsupported",
+  durable: "think-durable-unsupported",
 };
 
 const THINK_BINDING_UNSUPPORTED = {

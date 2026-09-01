@@ -43,6 +43,8 @@ import { callableRefDeclaration } from "./callable.ts";
 import type {
   AgentSkillSource,
   AgentToolSet,
+  DurableRunProps,
+  DurableWorkflowRef,
   McpServerDefinitions,
   PhaseProps,
 } from "./types.ts";
@@ -61,6 +63,30 @@ import type {
  */
 export function Phase(props: Omit<PhaseProps, "children"> & { children?: ReactNode }): ReactNode {
   return <phase {...(props as PhaseProps)} />;
+}
+
+/**
+ * A durable leaf — one imperative workflow execution mounted by the reactive
+ * machine. JSX supervises; the leaf sequences: retries, checkpoints, and
+ * imperative steps live INSIDE the workflow definition, while mounting,
+ * revocation, and what happens to the result stay the composition's business.
+ *
+ * `workflow` accepts the definition itself (a `defineDurableWorkflow` value,
+ * or anything with a stable `name`) or the bare registered name. The wrapper
+ * lowers it to the NAME — the host record stays fully serializable, and the
+ * executing engine resolves the implementation from its own registry. The
+ * durable execution's identity is (workflow, payload): remounting the same
+ * pair joins the SAME execution and a completed one replays its result.
+ */
+export function DurableRun(
+  props: Omit<DurableRunProps, "workflow"> & { workflow: string | DurableWorkflowRef },
+): ReactNode {
+  const { workflow, ...rest } = props;
+  const workflowName = typeof workflow === "string" ? workflow : workflow.name;
+  if (!workflowName) {
+    throw new Error("[agent-jsx] <DurableRun> needs a workflow with a non-empty name");
+  }
+  return <durable {...rest} workflow={workflowName} />;
 }
 
 /** What a child agent's implementation receives at runtime. `emit` is the
