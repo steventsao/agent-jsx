@@ -25,12 +25,24 @@
  * completed `session.task` cannot be unspawned, so a record that stops being
  * rendered simply stops being re-delegated — it is never torn down.
  *
+ * EFFECT INSIDE, PROMISES AT THE SEAM. The loop is an `Effect.gen` program:
+ * evaluation is `Effect.sync`, delegation and result routing are
+ * `Effect.tryPromise`, and the circuit breaker fails on a typed
+ * `MaxRoundsExceededError` channel. The exported functions keep their exact
+ * pre-Effect signatures (plain options in, plain Promise out) and re-raise
+ * failures as the ORIGINAL errors: engine-originated failures arrive as the
+ * tagged error (still an `Error`, still one loud line), while foreign errors —
+ * a delegate rejection, an onResult throw — propagate unwrapped. Effect never
+ * reaches the authored surface.
+ *
  * REACT-FREE by construction: it imports only the runtime file set
  * (tree/store/prompt/types + the compile/evaluate walker), never react or
  * react-reconciler. `emitRuntimeFiles` ships it as `runtime/workflow-executor.ts`
- * alongside the rest of that set.
+ * alongside the rest of that set; compiled artifacts therefore take a runtime
+ * dependency on `effect` (the engine's only runtime dep besides nothing).
  */
 
+import { Cause, Data, Effect, Exit } from "effect";
 import { collectInfra, collectPrompt, resultBindingName, type HostNode } from "./tree.ts";
 import { renderPrompt } from "./prompt.ts";
 import { createStore, withOutputs, type AgentStore, type OutputsContext } from "./store.ts";
@@ -70,6 +82,37 @@ export interface SpawnDescriptor {
  * already have parsed a provider's structured JSON response. */
 export type DelegateResult = unknown;
 
+/**
+ * The engine-originated failure: the composition still produced fresh
+ * delegations past the `maxRounds` circuit breaker. A `Data.TaggedError`, so
+ * programmatic callers can branch on `_tag`; still an `Error` with a
+ * single-line actionable message, per the throw-loudly design rule.
+ */
+export class MaxRoundsExceededError extends Data.TaggedError("MaxRoundsExceededError")<{
+  /** The configured circuit-breaker limit that was exceeded. */
+  readonly maxRounds: number;
+  /** stableIds still fresh at the moment the breaker tripped. */
+  readonly fresh: readonly string[];
+}> {
+  override get message(): string {
+    return (
+      `runReactiveWorkflow exceeded maxRounds=${this.maxRounds}: ` +
+      `composition still produced fresh delegations (${this.fresh.join(", ")}). ` +
+      `Non-converging reactive workflow.`
+    );
+  }
+}
+
+/** Run an engine program and re-raise any failure as the ORIGINAL error.
+ * Engine-originated failures are the tagged errors above; foreign errors
+ * (delegate rejections, handler throws) were captured with `catch: identity`
+ * and squash back to the exact value the Promise contract always surfaced. */
+async function runEngine<A>(program: Effect.Effect<A, unknown>): Promise<A> {
+  const exit = await Effect.runPromiseExit(program);
+  if (Exit.isFailure(exit)) throw Cause.squash(exit.cause);
+  return exit.value;
+}
+
 function isStructuredOutput(r: DelegateResult): r is { output: unknown } {
   return typeof r === "object" && r !== null && "output" in r;
 }
@@ -91,15 +134,22 @@ function outputsContextFor<S extends Record<string, unknown>>(store: AgentStore<
   };
 }
 
-async function routeDelegateResult(record: InfraRecord, result: DelegateResult): Promise<void> {
+function routeDelegateResult(record: InfraRecord, result: DelegateResult): Promise<void> {
   if (isStructuredOutput(result)) {
-    if (record.bindings?.__emit?.kind !== "continuation") return;
-    await record.handlers.__emit?.(result.output);
-    return;
+    if (record.bindings?.__emit?.kind !== "continuation") return Promise.resolve();
+    return Promise.resolve(record.handlers.__emit?.(result.output)).then(() => undefined);
   }
   const resultBinding = resultBindingName(record);
-  if (resultBinding) await record.handlers[resultBinding]?.(result);
+  return Promise.resolve(
+    resultBinding ? record.handlers[resultBinding]?.(result) : undefined
+  ).then(() => undefined);
 }
+
+/** `await` a maybe-sync foreign call inside the engine. `catch: identity` is
+ * deliberate: foreign failures are not the engine's to re-type — they squash
+ * back to the exact rejection value at the seam (runEngine). */
+const tryForeign = <A>(f: () => A | Promise<A>): Effect.Effect<A, unknown> =>
+  Effect.tryPromise({ try: () => Promise.resolve(f()), catch: (error) => error });
 
 export interface RunReactiveWorkflowOptions<
   P extends { store: AgentStore<S> },
@@ -156,6 +206,19 @@ export interface ReactiveStepResult<S> {
 const DEFAULT_MAX_ROUNDS = 100;
 const DEFAULT_PROMPT_BUDGET = 400;
 
+function descriptorFor(record: InfraRecord): SpawnDescriptor {
+  const { kind, ...input } = record.config;
+  return {
+    stableId: record.name,
+    agent: String(kind),
+    input,
+    emits: record.bindings?.__emit?.kind === "continuation",
+    bindings: record.bindings ?? {},
+    resultBinding: resultBindingName(record),
+    target: record.target ?? null,
+  };
+}
+
 /** Execute at most one currently rendered subagent boundary. This is the
  * interactive counterpart to `runReactiveWorkflow`: Workers and UIs can make
  * one model move, persist state, paint, then call again for the next turn. */
@@ -167,39 +230,32 @@ export async function runReactiveStep<
   const ctx = outputsContextFor(store);
   const evaluate = (): HostNode[] =>
     withOutputs(ctx, () => evaluateComponent(opts.component, { ...opts.props, store } as P));
+  const budget = opts.promptBudget ?? DEFAULT_PROMPT_BUDGET;
 
-  const roots = evaluate();
-  const records = roots.flatMap((root) => collectInfra(root));
-  const record = records.find((candidate) => candidate.kind === "subagent");
-  if (!record) {
+  const program = Effect.gen(function* () {
+    const roots = yield* Effect.sync(evaluate);
+    const records = roots.flatMap((root) => collectInfra(root));
+    const record = records.find((candidate) => candidate.kind === "subagent");
+    if (!record) {
+      return {
+        state: store.get(),
+        descriptor: null,
+        prompt: renderPrompt(collectPrompt(roots), budget).text,
+      };
+    }
+
+    const descriptor = descriptorFor(record);
+    const result = yield* tryForeign(() => opts.delegate(descriptor));
+    yield* tryForeign(() => routeDelegateResult(record, result));
+
+    const finalRoots = yield* Effect.sync(evaluate);
     return {
       state: store.get(),
-      descriptor: null,
-      prompt: renderPrompt(collectPrompt(roots), opts.promptBudget ?? DEFAULT_PROMPT_BUDGET).text,
+      descriptor,
+      prompt: renderPrompt(collectPrompt(finalRoots), budget).text,
     };
-  }
-
-  const { kind, ...input } = record.config;
-  const descriptor: SpawnDescriptor = {
-    stableId: record.name,
-    agent: String(kind),
-    input,
-    emits: record.bindings?.__emit?.kind === "continuation",
-    bindings: record.bindings ?? {},
-    resultBinding: resultBindingName(record),
-    target: record.target ?? null,
-  };
-  await routeDelegateResult(record, await opts.delegate(descriptor));
-
-  const finalRoots = evaluate();
-  return {
-    state: store.get(),
-    descriptor,
-    prompt: renderPrompt(
-      collectPrompt(finalRoots),
-      opts.promptBudget ?? DEFAULT_PROMPT_BUDGET,
-    ).text,
-  };
+  });
+  return runEngine(program);
 }
 
 export async function runReactiveWorkflow<
@@ -221,54 +277,45 @@ export async function runReactiveWorkflow<
   const evaluate = (): HostNode[] =>
     withOutputs(ctx, () => evaluateComponent(opts.component, { ...opts.props, store } as P));
 
-  const delegated: string[] = [];
-  const seen = new Set<string>();
-  let rounds = 0;
-  let roots: HostNode[] = [];
+  const program = Effect.gen(function* () {
+    const delegated: string[] = [];
+    const seen = new Set<string>();
+    let rounds = 0;
+    let roots: HostNode[] = [];
 
-  for (;;) {
-    // Fresh evaluate every round → fresh handler closures over current state.
-    roots = evaluate();
-    const records: InfraRecord[] = [];
-    for (const root of roots) collectInfra(root, records);
+    for (;;) {
+      // Fresh evaluate every round → fresh handler closures over current state.
+      roots = yield* Effect.sync(evaluate);
+      const records: InfraRecord[] = [];
+      for (const root of roots) collectInfra(root, records);
 
-    const subagents = records.filter((r) => r.kind === "subagent");
-    const fresh = subagents.filter((r) => !seen.has(r.name));
-    if (fresh.length === 0) break; // composition at rest — converged
+      const subagents = records.filter((r) => r.kind === "subagent");
+      const fresh = subagents.filter((r) => !seen.has(r.name));
+      if (fresh.length === 0) break; // composition at rest — converged
 
-    if (rounds >= maxRounds) {
-      throw new Error(
-        `runReactiveWorkflow exceeded maxRounds=${maxRounds}: ` +
-          `composition still produced fresh delegations (${fresh
-            .map((r) => r.name)
-            .join(", ")}). Non-converging reactive workflow.`
-      );
+      if (rounds >= maxRounds) {
+        return yield* new MaxRoundsExceededError({
+          maxRounds,
+          fresh: fresh.map((r) => r.name),
+        });
+      }
+
+      for (const rec of fresh) {
+        const descriptor = descriptorFor(rec);
+        delegated.push(rec.name);
+        seen.add(rec.name);
+        // `tryForeign` normalizes a sync or async delegate. A structured
+        // { output } sets the boundary's reserved slot via __emit → the
+        // continuation expands next round; a plain string folds through the
+        // record's own onResult (the callback prop realized).
+        const result = yield* tryForeign(() => opts.delegate(descriptor));
+        yield* tryForeign(() => routeDelegateResult(rec, result));
+      }
+      rounds++;
     }
 
-    for (const rec of fresh) {
-      const { kind, ...input } = rec.config;
-      const descriptor: SpawnDescriptor = {
-        stableId: rec.name,
-        agent: String(kind),
-        input,
-        emits: rec.bindings?.__emit?.kind === "continuation",
-        bindings: rec.bindings ?? {},
-        resultBinding: resultBindingName(rec),
-        target: rec.target ?? null,
-      };
-      delegated.push(rec.name);
-      seen.add(rec.name);
-      // `await` normalizes a sync or async delegate.
-      const result = await opts.delegate(descriptor);
-      // Route the result. A structured { output } sets the boundary's reserved
-      // slot via __emit → the continuation expands next round (grandchild
-      // descriptors). A plain string folds through the record's own onResult
-      // (the callback prop realized). Both mutate state and drive the next round.
-      await routeDelegateResult(rec, result);
-    }
-    rounds++;
-  }
-
-  const prompt = renderPrompt(collectPrompt(roots), budget).text;
-  return { state: store.get(), rounds, delegated, prompt };
+    const prompt = renderPrompt(collectPrompt(roots), budget).text;
+    return { state: store.get(), rounds, delegated, prompt };
+  });
+  return runEngine(program);
 }

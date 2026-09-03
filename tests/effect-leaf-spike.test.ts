@@ -13,7 +13,7 @@
  * really is exactly-once — if a re-run replayed its side effects, the machine
  * would have to defend against duplicates and the boundary would be a lie.
  *
- * THE ANSWER (Effect 3.22 / @effect/workflow 0.19 / @effect/cluster 0.60):
+ * THE ANSWER (Effect 4.0-rc — `effect/unstable/workflow` + `effect/unstable/cluster`):
  * yes, and without SQL or shard infrastructure. `TestRunner.layer` is an
  * entirely in-memory cluster, so `ClusterWorkflowEngine` runs the same durable
  * semantics in a unit test that it would run over DO SQLite. A workflow's
@@ -41,17 +41,16 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { ClusterWorkflowEngine, TestRunner } from "@effect/cluster";
-import { Activity, Workflow } from "@effect/workflow";
-import { Effect, Layer, ManagedRuntime, Schema } from "effect";
+import { ClusterWorkflowEngine, TestRunner } from "effect/unstable/cluster";
+import { Activity, Workflow } from "effect/unstable/workflow";
+import { Effect, Layer, ManagedRuntime, Option, Schema } from "effect";
 
 /** One durable leaf: "upgrade this package", with a single side-effecting step. */
 function makeUpgradeLeaf() {
   /** Every real execution of the activity body appends here. Nothing else does. */
   const sideEffects: string[] = [];
 
-  const UpgradeDeps = Workflow.make({
-    name: "UpgradeDeps",
+  const UpgradeDeps = Workflow.make("UpgradeDeps", {
     payload: { pkg: Schema.String },
     success: Schema.String,
     // The execution id is DERIVED from the payload. Two runs of the same
@@ -106,7 +105,9 @@ describe("effect durable leaf — exactly-once across a replay", () => {
 
       // And the result is genuinely persisted, not just memoized in a closure.
       const polled = await runtime.runPromise(UpgradeDeps.poll(executionId));
-      expect(polled?._tag).toBe("Complete");
+      expect(Option.isOption(polled) && polled._tag === "Some" ? polled.value._tag : null).toBe(
+        "Complete",
+      );
     } finally {
       await runtime.dispose();
     }

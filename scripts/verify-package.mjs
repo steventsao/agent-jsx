@@ -18,7 +18,16 @@ const entrypoints = [
     "emitCloudflare",
     "emitThink",
   ]],
+  [`${packageName}/compile/generated-runtime`, [
+    "compileGeneratedAgentManifest",
+    "makeCompiledAgentRuntime",
+  ]],
   [`${packageName}/goal`, ["buildGoalTable", "goalInit", "goalReducer"]],
+  [`${packageName}/generated-runtime`, [
+    "defineGeneratedAgent",
+    "makeGeneratedAgentRuntime",
+  ]],
+  [`${packageName}/durable`, ["createDurableEngine", "defineDurableWorkflow"]],
   [`${packageName}/jsx-runtime`, ["Fragment", "jsx", "jsxs"]],
   [`${packageName}/jsx-dev-runtime`, ["Fragment", "jsxDEV"]],
 ];

@@ -70,6 +70,16 @@ const dataRecord = (spec: AnyAgentSpec) => {
 };
 
 describe("PascalCase function agents", () => {
+  it("rejects an async function instead of silently compiling an empty tree", () => {
+    async function AsyncAgent() {
+      return <prompt>too late</prompt>;
+    }
+
+    expect(() => evaluateComponent(AsyncAgent, {})).toThrow(
+      '[agent-jsx] component "AsyncAgent" returned a Promise; agent functions must be synchronous',
+    );
+  });
+
   it("lowers a direct JSX function to the existing boundary record", () => {
     expect(CompiledCourier.spec.impl).toBe(Courier);
     expect(dataRecord(CompiledCourier.spec)).toEqual(dataRecord(LegacyCourier.spec));

@@ -165,4 +165,57 @@ describe("runReactiveWorkflow", () => {
     expect(result.state.value).toBeNull();
     expect(result.delegated).toEqual(["unguessed"]);
   });
+
+  it("propagates a delegate rejection verbatim (same error instance)", async () => {
+    function One({ store }: { store: AgentStore<{ v: null }> }) {
+      void store;
+      return (
+        <subagent
+          name="only"
+          kind="worker"
+          __agentBindings={{ advance: { kind: "result" } }}
+          advance={() => undefined}
+        />
+      );
+    }
+    const boom = new Error("backend exploded");
+    await expect(
+      runReactiveWorkflow<{ store: AgentStore<{ v: null }> }, { v: null }>({
+        component: One as never,
+        props: {} as never,
+        initialState: { v: null },
+        delegate: () => Promise.reject(boom),
+      })
+    ).rejects.toBe(boom);
+  });
+
+  it("fails past maxRounds with a tagged MaxRoundsExceededError", async () => {
+    interface S extends Record<string, unknown> {
+      count: number;
+    }
+    function Runaway({ store }: { store: AgentStore<S> }) {
+      const { count } = useAgentState(store);
+      return (
+        <subagent
+          name={`n${count}`}
+          kind="spawner"
+          __agentBindings={{ advance: { kind: "result" } }}
+          advance={() => store.set((s) => ({ ...s, count: s.count + 1 }))}
+        />
+      );
+    }
+    const caught = await runReactiveWorkflow<{ store: AgentStore<S> }, S>({
+      component: Runaway as never,
+      props: {} as never,
+      initialState: { count: 0 },
+      delegate: async () => "ok",
+      maxRounds: 2,
+    }).then(
+      () => null,
+      (error: unknown) => error
+    );
+    expect(caught).toBeInstanceOf(Error);
+    expect((caught as { _tag?: string })._tag).toBe("MaxRoundsExceededError");
+    expect((caught as Error).message).toMatch(/maxRounds=2/);
+  });
 });
