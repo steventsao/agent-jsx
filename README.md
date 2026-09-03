@@ -201,6 +201,43 @@ For long-running work, `<Phase>` declares transitions as data. See the
 [parse-pm](examples/parse-pm/) for checkpoints, budgets, recovery, and a human
 approval gate.
 
+### Compiler-owned runtime prototype
+
+Agent functions are synchronous by contract. Returning a Promise now fails at
+both the generated TypeScript boundary and the runtime evaluator instead of
+silently producing an empty tree. Startup and resource ownership remain async:
+the compiler infers each agent's direct `requires` list from nested JSX, lowers
+the graph to plain descriptors, and starts one scoped runtime that acquires each
+resource once and releases it on disposal.
+
+Effect is an implementation detail of `@agent-jsx/core/generated-runtime`; its
+public declarations contain no Effect types. Imperative durable work has the
+same boundary:
+
+```ts
+import {
+  createDurableEngine,
+  defineDurableWorkflow,
+} from "@agent-jsx/core/durable";
+
+const upgrade = defineDurableWorkflow({
+  name: "upgrade-package",
+  run: async ({ packageName }: { packageName: string }, step) =>
+    step.do("upgrade", async () => `upgraded ${packageName}`),
+});
+
+const engine = createDurableEngine({ workflows: [upgrade] });
+const result = await engine.execute({
+  workflow: upgrade.name,
+  payload: { packageName: "effect" },
+});
+await engine.dispose();
+```
+
+The prototype engine provides exactly-once replay within one running host. Its
+storage is currently in-memory; restart durability requires a deployment-owned
+Effect Workflow storage adapter (for example Durable Object SQLite).
+
 ## Verify
 
 ```sh

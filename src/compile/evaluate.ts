@@ -23,6 +23,14 @@ function isElement(x: unknown): x is { type: unknown; props: Record<string, unkn
   return typeof x === "object" && x !== null && "type" in x && "props" in x;
 }
 
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    (typeof value === "object" || typeof value === "function") &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
+}
+
 function walk(node: unknown, out: HostNode[]): void {
   if (node == null || typeof node === "boolean") return;
 
@@ -48,7 +56,16 @@ function walk(node: unknown, out: HostNode[]): void {
   if (typeof type === "function") {
     // A component: call it (pure) and keep walking. This is the step React's
     // renderer does with fibers; without state/effects it's a function call.
-    walk((type as (p: unknown) => unknown)(props), out);
+    const rendered = (type as (p: unknown) => unknown)(props);
+    if (isThenable(rendered)) {
+      const label = (type as { displayName?: string; name?: string }).displayName ??
+        (type as { name?: string }).name ??
+        "anonymous";
+      throw new Error(
+        `[agent-jsx] component "${label}" returned a Promise; agent functions must be synchronous`,
+      );
+    }
+    walk(rendered, out);
     return;
   }
 

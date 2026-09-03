@@ -17,9 +17,8 @@
  * instead of running `work` again. Effect never appears in these types.
  *
  * THE ENGINE INSIDE IS EFFECT. `createDurableEngine` mounts each definition
- * as an `@effect/workflow` Workflow whose activities are the `step.do`
- * checkpoints, over `ClusterWorkflowEngine` with the in-memory cluster
- * `TestRunner` as storage. That is the property the spike
+ * as an Effect Workflow whose activities are the `step.do` checkpoints, over
+ * the no-sharding in-memory `WorkflowEngine`. That is the property the spike
  * (tests/effect-leaf-spike.test.ts) proved: the same durable semantics run in
  * one process with zero services, so SimHost tests observe the exactly-once
  * guarantee offline — which Cloudflare Workflows cannot offer.
@@ -30,17 +29,15 @@
  * new execution. That is what lets a phase change unmount and later remount a
  * leaf without ever running its effects twice.
  *
- * SHIPPING STATUS. This file is runtime-internal: it is not a package export,
- * not a build entry, and not in the react-free runtime file set, so the
- * published package carries no Effect dependency. `tsconfig.build.json`
- * excludes it from the declaration build for the same reason. The seam for a
- * production driver (DO SQLite storage, or a Cloudflare Workflows lowering)
- * is the engine layer, not the authored surface.
+ * SHIPPING STATUS. The module is published as `@agent-jsx/core/durable`, but
+ * its declarations expose only the plain contracts above. Effect is the one
+ * pinned runtime dependency for the compiler-owned layer and workflow adapters.
+ * The seam for a production driver (DO SQLite storage, or a Cloudflare
+ * Workflows lowering) is the engine layer, not the authored surface.
  */
 
-import { ClusterWorkflowEngine, TestRunner } from "@effect/cluster";
-import { Activity, Workflow, WorkflowEngine } from "@effect/workflow";
-import { Cause, Effect, Layer, ManagedRuntime, Runtime, Schema } from "effect";
+import { Cause, Effect, Layer, ManagedRuntime, Option, Schema } from "effect";
+import { Activity, Workflow, WorkflowEngine } from "effect/unstable/workflow";
 import type { DurableEngineLike, DurableWorkflowRef } from "./types.ts";
 
 // ---------------------------------------------------------------------------
@@ -169,8 +166,7 @@ export function createDurableEngine(options: DurableEngineOptions): DurableEngin
   const workflows = new Map<string, any>();
   const workflowLayers: Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>[] = [];
   for (const definition of definitions.values()) {
-    const workflow = Workflow.make({
-      name: definition.name,
+    const workflow = Workflow.make(definition.name, {
       payload: { json: Schema.String },
       success: Schema.String,
       idempotencyKey: ({ json }) => json,
@@ -182,7 +178,7 @@ export function createDurableEngine(options: DurableEngineOptions): DurableEngin
         // Capture the workflow fiber's live context (engine, instance, …) so
         // the plain-async `step.do` bridge can run Activities under it. The
         // authored body never sees any of this — it only sees `step`.
-        const runtime = yield* Effect.runtime<never>();
+        const context = yield* Effect.context<any>();
         const step: DurableStep = {
           do: <T>(
             name: string,
@@ -193,7 +189,7 @@ export function createDurableEngine(options: DurableEngineOptions): DurableEngin
             const activity = Activity.make({
               name,
               success: Schema.String,
-              error: Schema.Defect,
+              error: Schema.Defect(),
               execute: Effect.tryPromise({
                 try: async () => packResult(await work()),
                 catch: (error) => error,
@@ -201,7 +197,7 @@ export function createDurableEngine(options: DurableEngineOptions): DurableEngin
             });
             const settled =
               attempts > 1 ? Activity.retry(activity, { times: attempts - 1 }) : activity;
-            return Runtime.runPromise(runtime)(
+            return Effect.runPromiseWith(context)(
               Effect.orDie(settled) as unknown as Effect.Effect<string>,
             ).then((packed) => unpackResult(packed) as T);
           },
@@ -218,18 +214,14 @@ export function createDurableEngine(options: DurableEngineOptions): DurableEngin
     throw new Error("[durable] createDurableEngine needs at least one workflow definition");
   }
 
-  // The in-memory cluster: same ClusterWorkflowEngine semantics a SQL-backed
-  // deployment runs, zero services (the spike's load-bearing finding).
+  // The no-sharding in-memory engine. A persisted deployment swaps only this
+  // layer; workflow definitions and the plain authored contract stay fixed.
   type WorkflowLayer = Layer.Layer<never, never, WorkflowEngine.WorkflowEngine>;
   const merged = Layer.mergeAll(
     ...(workflowLayers as [WorkflowLayer, ...WorkflowLayer[]]),
   );
   const runtime = ManagedRuntime.make(
-    merged.pipe(
-      Layer.provideMerge(
-        ClusterWorkflowEngine.layer.pipe(Layer.provideMerge(TestRunner.layer)),
-      ),
-    ) as Layer.Layer<never>,
+    Layer.provideMerge(merged, WorkflowEngine.layerMemory),
   );
 
   const resolve = (request: DurableExecutionRequest) => {
@@ -261,8 +253,10 @@ export function createDurableEngine(options: DurableEngineOptions): DurableEngin
     isComplete: async (request) => {
       const { workflow, json } = resolve(request);
       const id = await run(workflow.executionId({ json }) as Effect.Effect<string>);
-      const polled = await run(workflow.poll(id) as Effect.Effect<{ _tag: string } | undefined>);
-      return polled?._tag === "Complete";
+      const polled = await run(
+        workflow.poll(id) as Effect.Effect<Option.Option<{ _tag: string }>>,
+      );
+      return Option.isSome(polled) && polled.value._tag === "Complete";
     },
     dispose: () => runtime.dispose(),
   };
